@@ -1,0 +1,57 @@
+namespace vfs_schema;
+
+
+union Index {
+    IndexNum,
+    IndexString,
+    File,
+}
+/*
+table Index {
+    size:int;
+    maps:[InvertedMap];
+}
+*/
+
+table IndexNum {
+    size:int;
+    maps:[InvertedMapNum];
+}
+
+table IndexString {
+    size:int;
+    maps:[InvertedMapString];
+}
+
+
+table InvertedMapNum {
+    key:int;
+    value:Record;
+}
+
+table InvertedMapString {
+    key:int;
+    value:Record;
+}
+
+table File {
+    id:uint64; // file inode number
+    name:string;
+    index_at:int64;
+}
+
+
+struct Record {
+    file_id:uint64;
+    offset:int;
+    size:int;
+    offset_of_value:int;
+    value_size:int;
+}
+
+table Root {
+    version:int;
+    index:Index;
+}
+
+root_type Root;
