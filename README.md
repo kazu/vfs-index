@@ -6,7 +6,7 @@
 - [ ] num column index の読み込み
 - [ ] tri-gram clumn index の書き出し
 - [ ] 検索の実装
-- [ ] index merging のサポート
+- [ ] index merging のサポート
 - [ ] コメント、ライセンス追加
 - [ ] csv のsupport
 - [ ] msgpack のsupport
