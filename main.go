@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"reflect"
+	"sort"
 
 	"encoding/json"
 
@@ -94,9 +95,21 @@ func main_search() {
 		v := m.Get("id").(uint64)
 		//return v < 122878513
 		return v > 4568788719
-		return true
 	})
-	fmt.Printf("FindAll() len(results)=%d results[0]=%+v\n", len(results), results[0])
+	fmt.Printf("ASC: FindAll() len(results)=%d results[0]=%+v\n", len(results), results[0])
+
+	results = idx.On("test", indexer.ReaderOpt{"column": "id"}).Searcher().FindAll(func(m indexer.Match) bool {
+		v := m.Get("id").(uint64)
+		return v < 122878513
+		//return v > 4568788719
+	})
+	fmt.Printf("DSC: FindAll() len(results)=%d \n", len(results))
+	sort.Slice(results, func(i, j int) bool {
+		return results[i]["id"].(uint64) > results[j]["id"].(uint64)
+	})
+
+	fmt.Printf("DSC: FindAll() len(results)=%d results[0]=%+v\n", len(results), results[0])
+
 }
 
 /*

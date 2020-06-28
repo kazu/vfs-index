@@ -429,10 +429,12 @@ func (s *Searcher) Start(fn func(*Record) bool) {
 
 	if first && !last {
 		s.mode = SEARCH_DESC
+		s.cur = s.low
 		return
 	}
 	if !first && last {
 		s.mode = SEARCH_ASC
+		s.cur = s.high
 		return
 	}
 	s.mode = SEARCH_ALL
@@ -501,8 +503,8 @@ func (s *Searcher) FindAll(fn func(Match) bool) (results []SearchResult) {
 				results = append(results, r.cache)
 			}
 		}
-	case SEARCH_ASC:
-		for r := range s.searchASC(fn) {
+	case SEARCH_ASC, SEARCH_DESC:
+		for r := range s.bsearch(fn) {
 			results = append(results, r.cache)
 		}
 	}
@@ -530,28 +532,18 @@ func (s *Searcher) searchOnNormal() <-chan *Record {
 	return ch
 }
 
-func (s *Searcher) firstMatchPos() int {
-	if s.mode == SEARCH_ASC {
-		return s.high
-	}
-	if s.mode == SEARCH_DESC {
-		return s.low
-	}
-	return 0
-}
-
-func (s *Searcher) searchASC(fn func(Match) bool) <-chan *Record {
+func (s *Searcher) bsearch(fn func(Match) bool) <-chan *Record {
 	ch := make(chan *Record, 10)
 
-	if s.mode != SEARCH_ASC {
+	if s.mode != SEARCH_ASC && s.mode != SEARCH_DESC {
 		close(ch)
 		return ch
 	}
 	go func() {
 		checked := map[int]bool{}
 
-		checked[s.high] = true
-		r := s.c.cacheToRecord(s.high)
+		checked[s.cur] = true
+		r := s.c.cacheToRecord(s.cur)
 		r.caching(s.c)
 		ch <- r
 
@@ -561,30 +553,64 @@ func (s *Searcher) searchASC(fn func(Match) bool) <-chan *Record {
 			}
 
 			s.cur = (s.low + s.high) / 2
-			Log(LOG_DEBUG, "ASC low=%d cur=%d high=%d\n", s.low, s.cur, s.high)
+			//Log(LOG_DEBUG, "ASC low=%d cur=%d high=%d\n", s.low, s.cur, s.high)
 			r = s.c.cacheToRecord(s.cur)
 			r.caching(s.c)
 			if fn(Match{mapInf: r.cache}) {
 				ch <- r
 				checked[s.cur] = true
-				s.high = s.cur
+				if s.mode == SEARCH_ASC {
+					s.high = s.cur
+				}
+				if s.mode == SEARCH_DESC {
+					s.low = s.cur
+				}
 			} else {
 				checked[s.cur] = false
-				s.low = s.cur
+				if s.mode == SEARCH_ASC {
+					s.low = s.cur
+				}
+				if s.mode == SEARCH_DESC {
+					s.high = s.cur
+				}
 			}
 			if s.high <= s.low+1 {
-				s.mode = SEARCH_FINISH
+				//s.mode = SEARCH_FINISH
+				break
 			}
 		}
 
-		//Log(LOG_DEBUG, "ASC low=%d cur=%d high=%d\n", s.low, s.cur, s.high)
-		for cur := s.high; cur < len(s.c.cache.caches); cur++ {
+		//Log(LOG_DEBUG, "!ASC low=%d cur=%d high=%d\n", s.low, s.cur, s.high)
+		//for cur := s.high; cur < len(s.c.cache.caches); cur++ {
+		var cur int
+		if s.mode == SEARCH_ASC {
+			cur = s.high
+		}
+		if s.mode == SEARCH_DESC {
+			cur = s.low
+		}
+		for {
+			if s.mode == SEARCH_ASC && cur >= len(s.c.cache.caches) {
+				break
+			}
+			if s.mode == SEARCH_DESC && cur <= 0 {
+				break
+			}
+			//Log(LOG_DEBUG, "cur=%d\n", cur)
+
 			if checked[cur] {
-				continue
+				goto NEXT
 			}
 			r = s.c.cacheToRecord(cur)
 			r.caching(s.c)
 			ch <- r
+		NEXT:
+			if s.mode == SEARCH_ASC {
+				cur++
+			}
+			if s.mode == SEARCH_DESC {
+				cur--
+			}
 		}
 
 		s.mode = SEARCH_FINISH
