@@ -424,8 +424,6 @@ func (s *Searcher) Do() <-chan *Record {
 
 func (s *Searcher) Start(fn func(*Record) bool) {
 
-	//Log(LOG_DEBUG, "colum cache: %+v\n", s.c.cache)
-
 	first := fn(s.c.cacheToRecord(s.low))
 	last := fn(s.c.cacheToRecord(s.high))
 
@@ -480,6 +478,38 @@ func (s *Searcher) First(fn func(Match) bool) SearchResult {
 	return nil
 }
 
+func (s *Searcher) FindAll(fn func(Match) bool) (results []SearchResult) {
+
+	results = make([]SearchResult, 0, 100)
+
+	if s.mode == SEARCH_INIT {
+		s.mode = SEARCH_START
+		s.Start(func(r *Record) bool {
+			if r == nil {
+				Log(LOG_ERROR, "cannot load record!!!\n")
+				return false
+			}
+			r.caching(s.c)
+			return fn(Match{mapInf: r.cache})
+		})
+	}
+	switch s.mode {
+	case SEARCH_ALL:
+		for r := range s.searchOnNormal() {
+			r.caching(s.c)
+			if fn(Match{mapInf: r.cache}) {
+				results = append(results, r.cache)
+			}
+		}
+	case SEARCH_ASC:
+		for r := range s.searchASC(fn) {
+			results = append(results, r.cache)
+		}
+	}
+
+	return
+}
+
 func (s *Searcher) searchOnNormal() <-chan *Record {
 	ch := make(chan *Record, 10)
 
@@ -494,6 +524,69 @@ func (s *Searcher) searchOnNormal() <-chan *Record {
 			}
 			ch <- s.c.cacheToRecord(s.cur)
 		}
+		s.mode = SEARCH_FINISH
+		close(ch)
+	}()
+	return ch
+}
+
+func (s *Searcher) firstMatchPos() int {
+	if s.mode == SEARCH_ASC {
+		return s.high
+	}
+	if s.mode == SEARCH_DESC {
+		return s.low
+	}
+	return 0
+}
+
+func (s *Searcher) searchASC(fn func(Match) bool) <-chan *Record {
+	ch := make(chan *Record, 10)
+
+	if s.mode != SEARCH_ASC {
+		close(ch)
+		return ch
+	}
+	go func() {
+		checked := map[int]bool{}
+
+		checked[s.high] = true
+		r := s.c.cacheToRecord(s.high)
+		r.caching(s.c)
+		ch <- r
+
+		for {
+			if s.mode == SEARCH_FINISH {
+				break
+			}
+
+			s.cur = (s.low + s.high) / 2
+			Log(LOG_DEBUG, "ASC low=%d cur=%d high=%d\n", s.low, s.cur, s.high)
+			r = s.c.cacheToRecord(s.cur)
+			r.caching(s.c)
+			if fn(Match{mapInf: r.cache}) {
+				ch <- r
+				checked[s.cur] = true
+				s.high = s.cur
+			} else {
+				checked[s.cur] = false
+				s.low = s.cur
+			}
+			if s.high <= s.low+1 {
+				s.mode = SEARCH_FINISH
+			}
+		}
+
+		//Log(LOG_DEBUG, "ASC low=%d cur=%d high=%d\n", s.low, s.cur, s.high)
+		for cur := s.high; cur < len(s.c.cache.caches); cur++ {
+			if checked[cur] {
+				continue
+			}
+			r = s.c.cacheToRecord(cur)
+			r.caching(s.c)
+			ch <- r
+		}
+
 		s.mode = SEARCH_FINISH
 		close(ch)
 	}()

@@ -86,8 +86,17 @@ func main_search() {
 	z := idx.On("test", indexer.ReaderOpt{"column": "id"}).Searcher().First(func(m indexer.Match) bool {
 		v := m.Get("id").(uint64)
 		return v < 122878513
+		//return v > 4568788719
 	})
-	spew.Dump(z)
+	fmt.Printf("First() result=%+v\n", z)
+
+	results := idx.On("test", indexer.ReaderOpt{"column": "id"}).Searcher().FindAll(func(m indexer.Match) bool {
+		v := m.Get("id").(uint64)
+		//return v < 122878513
+		return v > 4568788719
+		return true
+	})
+	fmt.Printf("FindAll() len(results)=%d results[0]=%+v\n", len(results), results[0])
 }
 
 /*
