@@ -1,4 +1,4 @@
-package indexer
+package vfs-index
 
 var Opt Option
 
