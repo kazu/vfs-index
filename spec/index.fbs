@@ -5,6 +5,8 @@ union Index {
     IndexNum,
     IndexString,
     File,
+    InvertedMapNum,
+    InvertedMapString
 }
 /*
 table Index {
@@ -25,12 +27,12 @@ table IndexString {
 
 
 table InvertedMapNum {
-    key:int;
+    key:int64;
     value:Record;
 }
 
 table InvertedMapString {
-    key:int;
+    key:string;
     value:Record;
 }
 
@@ -43,8 +45,8 @@ table File {
 
 struct Record {
     file_id:uint64;
-    offset:int;
-    size:int;
+    offset:int64;
+    size:int64;
     offset_of_value:int;
     value_size:int;
 }

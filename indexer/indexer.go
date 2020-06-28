@@ -23,6 +23,7 @@ type LogLevel int
 
 const (
 	LOG_ERROR LogLevel = iota
+	LOG_WARN
 	LOG_DEBUG
 )
 
@@ -30,6 +31,14 @@ func Log(l LogLevel, f string, args ...interface{}) {
 
 	var b strings.Builder
 	_ = b
+	switch l {
+	case LOG_DEBUG:
+		b.WriteString("D: ")
+	case LOG_WARN:
+		b.WriteString("W: ")
+	case LOG_ERROR:
+		b.WriteString("E: ")
+	}
 	fmt.Fprintf(&b, f, args...)
 	os.Stderr.WriteString(b.String())
 	return
@@ -67,6 +76,22 @@ func (idx *Indexer) Regist(table, col string) error {
 	idx.Cols[col] = idxCol
 
 	return err
+}
+
+type ReaderOpt map[string]string
+
+func (idx *Indexer) On(table string, opt ReaderOpt) *SearchCond {
+	flist, err := idx.OpenFileList(table)
+	if err != nil {
+		return &SearchCond{idx: idx, Err: err}
+	}
+	cond := &SearchCond{idx: idx, flist: flist, table: table, column: ""}
+	if opt != nil && len(opt["column"]) > 0 {
+		//cond.column = opt["column"]
+		cond.StartCol(opt["column"])
+	}
+
+	return cond
 }
 
 func (idx *Indexer) OpenFileList(table string) (flist *FileList, err error) {

@@ -1,11 +1,22 @@
 package indexer
 
 type Range struct {
-	first int
-	last  int
-	cur   int
+	first uint64
+	last  uint64
 }
 
-func NewRange(s, e int) Range {
-	return Range{first: s, last: e, cur: s}
+type RangeCur struct {
+	Range
+	cur int
 }
+
+/*
+func NewRangeCur(s, e uint64) Range {
+	return &RangeCur{first: s, last: e, cur: int(s)}
+}
+*/
+
+const (
+	MAX_IDX_CACHE      = 512
+	MIN_NEGATIVE_CACHE = 8
+)

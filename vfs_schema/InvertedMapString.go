@@ -26,16 +26,12 @@ func (rcv *InvertedMapString) Table() flatbuffers.Table {
 	return rcv._tab
 }
 
-func (rcv *InvertedMapString) Key() int32 {
+func (rcv *InvertedMapString) Key() []byte {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(4))
 	if o != 0 {
-		return rcv._tab.GetInt32(o + rcv._tab.Pos)
+		return rcv._tab.ByteVector(o + rcv._tab.Pos)
 	}
-	return 0
-}
-
-func (rcv *InvertedMapString) MutateKey(n int32) bool {
-	return rcv._tab.MutateInt32Slot(4, n)
+	return nil
 }
 
 func (rcv *InvertedMapString) Value(obj *Record) *Record {
@@ -54,8 +50,8 @@ func (rcv *InvertedMapString) Value(obj *Record) *Record {
 func InvertedMapStringStart(builder *flatbuffers.Builder) {
 	builder.StartObject(2)
 }
-func InvertedMapStringAddKey(builder *flatbuffers.Builder, key int32) {
-	builder.PrependInt32Slot(0, key, 0)
+func InvertedMapStringAddKey(builder *flatbuffers.Builder, key flatbuffers.UOffsetT) {
+	builder.PrependUOffsetTSlot(0, flatbuffers.UOffsetT(key), 0)
 }
 func InvertedMapStringAddValue(builder *flatbuffers.Builder, value flatbuffers.UOffsetT) {
 	builder.PrependStructSlot(1, flatbuffers.UOffsetT(value), 0)

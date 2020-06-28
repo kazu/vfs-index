@@ -7,24 +7,30 @@ import "strconv"
 type Index byte
 
 const (
-	IndexNONE        Index = 0
-	IndexIndexNum    Index = 1
-	IndexIndexString Index = 2
-	IndexFile        Index = 3
+	IndexNONE              Index = 0
+	IndexIndexNum          Index = 1
+	IndexIndexString       Index = 2
+	IndexFile              Index = 3
+	IndexInvertedMapNum    Index = 4
+	IndexInvertedMapString Index = 5
 )
 
 var EnumNamesIndex = map[Index]string{
-	IndexNONE:        "NONE",
-	IndexIndexNum:    "IndexNum",
-	IndexIndexString: "IndexString",
-	IndexFile:        "File",
+	IndexNONE:              "NONE",
+	IndexIndexNum:          "IndexNum",
+	IndexIndexString:       "IndexString",
+	IndexFile:              "File",
+	IndexInvertedMapNum:    "InvertedMapNum",
+	IndexInvertedMapString: "InvertedMapString",
 }
 
 var EnumValuesIndex = map[string]Index{
-	"NONE":        IndexNONE,
-	"IndexNum":    IndexIndexNum,
-	"IndexString": IndexIndexString,
-	"File":        IndexFile,
+	"NONE":              IndexNONE,
+	"IndexNum":          IndexIndexNum,
+	"IndexString":       IndexIndexString,
+	"File":              IndexFile,
+	"InvertedMapNum":    IndexInvertedMapNum,
+	"InvertedMapString": IndexInvertedMapString,
 }
 
 func (v Index) String() string {

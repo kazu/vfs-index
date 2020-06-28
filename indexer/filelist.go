@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 
 	flatbuffers "github.com/google/flatbuffers/go"
+	"github.com/kazu/loncha"
 	"github.com/kazu/vfs-index/vfs_schema"
 )
 
@@ -106,7 +107,7 @@ func (flist *FileList) Update() {
 			name:     filepath.Base(info.Name()),
 			index_at: info.ModTime().UnixNano(), // ? ZERO_TIME?
 		}
-		Log(LOG_ERROR, "D: loaded file list %+v from data \n", flist.Files[i])
+		Log(LOG_DEBUG, "loaded file list %+v from data \n", flist.Files[i])
 	}
 
 	sort.Slice(flist.Files, func(i, j int) bool { return flist.Files[i].id < flist.Files[j].id })
@@ -125,7 +126,7 @@ func (l *FileList) load() error {
 
 	files, e := filepath.Glob(fmt.Sprintf("%s.*-*", FileListPath(l.Dir)))
 	if e != nil {
-		Log(LOG_ERROR, "E: glob fail %s\n", e.Error())
+		Log(LOG_ERROR, "glob fail %s\n", e.Error())
 		return e
 	}
 
@@ -137,7 +138,7 @@ func (l *FileList) load() error {
 			continue
 		}
 		f := FileFromFbs(r)
-		Log(LOG_ERROR, "D: loaded file list %+v from %s \n", f, fname)
+		Log(LOG_DEBUG, "loaded file list %+v from %s \n", f, fname)
 		nFiles = append(nFiles, f)
 		r.Close()
 	}
@@ -153,12 +154,33 @@ func (l *FileList) Store() {
 	}
 }
 
+func (l *FileList) FPath(id uint64) (path string, e error) {
+
+	//FIXME: shoud support incremental load
+	//if l.Files
+	if len(l.Files) < 1 {
+		l.load()
+	}
+
+	inf, e := loncha.Find(&l.Files, func(i int) bool { return l.Files[i].id == id })
+	if e != nil {
+		Log(LOG_ERROR, "loncha error %s\n", e)
+		return
+	}
+	if file, ok := inf.(*File); ok {
+		path = filepath.Join(l.Dir, file.name)
+		return
+	}
+	return path, ErrNotFoundFile
+}
+
 func FileFromFbs(r io.Reader) *File {
 	raws, e := ioutil.ReadAll(r)
 	if e != nil {
 		return nil
 	}
 	vRoot := vfs_schema.GetRootAsRoot(raws, 0)
+
 	uTable := new(flatbuffers.Table)
 	vRoot.Index(uTable)
 	fbsFile := new(vfs_schema.File)
@@ -186,37 +208,44 @@ func (f *File) ToFbs(l *FileList) []byte {
 
 }
 
+func SafeRename(src, dst string) error {
+
+	if err := os.Link(src, dst); err != nil {
+		return err
+	}
+	return os.Remove(src)
+
+}
+
 func (f *File) finishWrite(l *FileList) error {
-
-	return os.Rename(FileListPathWithAdding(l.Dir, f.id, f.id, true), FileListPathWithAdding(l.Dir, f.id, f.id, false))
-
+	return SafeRename(FileListPathWithAdding(l.Dir, f.id, f.id, true), FileListPathWithAdding(l.Dir, f.id, f.id, false))
 }
 
 func (f *File) Write(l *FileList) error {
 
-	Log(LOG_DEBUG, "D: writting... %s\n", FileListPathWithAdding(l.Dir, f.id, f.id, true))
+	Log(LOG_DEBUG, "writting... %s\n", FileListPathWithAdding(l.Dir, f.id, f.id, true))
 	io, e := os.Create(FileListPathWithAdding(l.Dir, f.id, f.id, true))
 	if e != nil {
-		Log(LOG_DEBUG, "D: fail... %s\n", FileListPathWithAdding(l.Dir, f.id, f.id, true))
+		Log(LOG_WARN, "F: writing... %s\n", FileListPathWithAdding(l.Dir, f.id, f.id, true))
 		return e
 	}
 	io.Write(f.ToFbs(l))
 	io.Close()
 
-	Log(LOG_DEBUG, "D: rename... %s -> %s \n",
+	Log(LOG_DEBUG, "renaming... %s -> %s \n",
 		FileListPathWithAdding(l.Dir, f.id, f.id, true),
 		FileListPathWithAdding(l.Dir, f.id, f.id, false),
 	)
 	e = f.finishWrite(l)
 	if e != nil {
 		os.Remove(FileListPathWithAdding(l.Dir, f.id, f.id, true))
-		Log(LOG_DEBUG, "D: F:rename %s -> %s \n",
+		Log(LOG_WARN, "F: rename %s -> %s \n",
 			FileListPathWithAdding(l.Dir, f.id, f.id, true),
 			FileListPathWithAdding(l.Dir, f.id, f.id, false),
 		)
 		return e
 	}
-	Log(LOG_DEBUG, "D: S:renamed %s -> %s \n", FileListPathWithAdding(l.Dir, f.id, f.id, true), FileListPathWithAdding(l.Dir, f.id, f.id, false))
+	Log(LOG_DEBUG, "S: renamed %s -> %s \n", FileListPathWithAdding(l.Dir, f.id, f.id, true), FileListPathWithAdding(l.Dir, f.id, f.id, false))
 
 	return nil
 
@@ -225,28 +254,49 @@ func (f *File) Write(l *FileList) error {
 // FIXME: support other format
 func (f *File) Records(dir string) <-chan *Record {
 	ch := make(chan *Record, 5)
-	io, e := os.Open(filepath.Join(dir, f.name))
+	/*
+		b, _ := ioutil.ReadFile(filepath.Join(dir, f.name))
+		buf := string(b)
+	*/
+	rio, e := os.Open(filepath.Join(dir, f.name))
 	if e != nil {
 		close(ch)
-		io.Close()
+		rio.Close()
 		return ch
 	}
 
 	go func() {
-		dec := json.NewDecoder(io)
-		var data map[string]interface{}
-		dec.Token()
+		dec := json.NewDecoder(rio)
 
-		for dec.More() {
-			rec := &Record{fileID: f.id, offset: dec.InputOffset()}
-			dec.Decode(&data)
-			data = nil
-			rec.size = dec.InputOffset() - rec.offset
-			ch <- rec
+		var rec *Record
+
+		nest := int(0)
+		for {
+
+			token, err := dec.Token()
+			if err == io.EOF {
+				break
+			}
+			switch token {
+			case json.Delim('{'):
+				nest++
+				if nest == 1 {
+					rec = &Record{fileID: f.id, offset: dec.InputOffset() - 1}
+				}
+
+			case json.Delim('}'):
+				nest--
+				if nest == 0 {
+					rec.size = dec.InputOffset() - rec.offset
+					ch <- rec
+					//Log(LOG_DEBUG, "rec=%+v\n", rec)
+					//Log(LOG_DEBUG, "1: raw='%s'\n", strings.ReplaceAll(buf[rec.offset:rec.offset+rec.size], "\n", " "))
+				}
+			}
 		}
 
 		close(ch)
-		io.Close()
+		rio.Close()
 	}()
 
 	return ch

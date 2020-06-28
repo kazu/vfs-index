@@ -1,8 +1,8 @@
 ## TODO
 
 - [x] file list indexの書き出し
-- [ ] file list indexの読み込み
-- [ ] num column index の書き出し
+- [x] file list indexの読み込み
+- [x] num column index の書き出し
 - [ ] num column index の読み込み
 - [ ] tri-gram clumn index の書き出し
 - [ ] 検索の実装
@@ -11,3 +11,4 @@
 - [ ] csv のsupport
 - [ ] msgpack のsupport
 - [ ] dirty list のcontainer-list 化
+- [ ] support lz4(?)

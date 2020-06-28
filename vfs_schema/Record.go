@@ -26,40 +26,40 @@ func (rcv *Record) MutateFileId(n uint64) bool {
 	return rcv._tab.MutateUint64(rcv._tab.Pos+flatbuffers.UOffsetT(0), n)
 }
 
-func (rcv *Record) Offset() int32 {
-	return rcv._tab.GetInt32(rcv._tab.Pos + flatbuffers.UOffsetT(8))
+func (rcv *Record) Offset() int64 {
+	return rcv._tab.GetInt64(rcv._tab.Pos + flatbuffers.UOffsetT(8))
 }
-func (rcv *Record) MutateOffset(n int32) bool {
-	return rcv._tab.MutateInt32(rcv._tab.Pos+flatbuffers.UOffsetT(8), n)
+func (rcv *Record) MutateOffset(n int64) bool {
+	return rcv._tab.MutateInt64(rcv._tab.Pos+flatbuffers.UOffsetT(8), n)
 }
 
-func (rcv *Record) Size() int32 {
-	return rcv._tab.GetInt32(rcv._tab.Pos + flatbuffers.UOffsetT(12))
+func (rcv *Record) Size() int64 {
+	return rcv._tab.GetInt64(rcv._tab.Pos + flatbuffers.UOffsetT(16))
 }
-func (rcv *Record) MutateSize(n int32) bool {
-	return rcv._tab.MutateInt32(rcv._tab.Pos+flatbuffers.UOffsetT(12), n)
+func (rcv *Record) MutateSize(n int64) bool {
+	return rcv._tab.MutateInt64(rcv._tab.Pos+flatbuffers.UOffsetT(16), n)
 }
 
 func (rcv *Record) OffsetOfValue() int32 {
-	return rcv._tab.GetInt32(rcv._tab.Pos + flatbuffers.UOffsetT(16))
+	return rcv._tab.GetInt32(rcv._tab.Pos + flatbuffers.UOffsetT(24))
 }
 func (rcv *Record) MutateOffsetOfValue(n int32) bool {
-	return rcv._tab.MutateInt32(rcv._tab.Pos+flatbuffers.UOffsetT(16), n)
+	return rcv._tab.MutateInt32(rcv._tab.Pos+flatbuffers.UOffsetT(24), n)
 }
 
 func (rcv *Record) ValueSize() int32 {
-	return rcv._tab.GetInt32(rcv._tab.Pos + flatbuffers.UOffsetT(20))
+	return rcv._tab.GetInt32(rcv._tab.Pos + flatbuffers.UOffsetT(28))
 }
 func (rcv *Record) MutateValueSize(n int32) bool {
-	return rcv._tab.MutateInt32(rcv._tab.Pos+flatbuffers.UOffsetT(20), n)
+	return rcv._tab.MutateInt32(rcv._tab.Pos+flatbuffers.UOffsetT(28), n)
 }
 
-func CreateRecord(builder *flatbuffers.Builder, fileId uint64, offset int32, size int32, offsetOfValue int32, valueSize int32) flatbuffers.UOffsetT {
-	builder.Prep(8, 24)
+func CreateRecord(builder *flatbuffers.Builder, fileId uint64, offset int64, size int64, offsetOfValue int32, valueSize int32) flatbuffers.UOffsetT {
+	builder.Prep(8, 32)
 	builder.PrependInt32(valueSize)
 	builder.PrependInt32(offsetOfValue)
-	builder.PrependInt32(size)
-	builder.PrependInt32(offset)
+	builder.PrependInt64(size)
+	builder.PrependInt64(offset)
 	builder.PrependUint64(fileId)
 	return builder.Offset()
 }

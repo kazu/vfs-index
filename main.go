@@ -14,6 +14,9 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/kazu/vfs-index/indexer"
 	"github.com/ugorji/go/codec"
+
+	"github.com/gabriel-vasile/mimetype"
+	"github.com/h2non/filetype"
 )
 
 func old_main() {
@@ -43,8 +46,10 @@ func path2Hash(p string) (imgsim.Hash, imgsim.Hash, error) {
 	return ahash, dhash, nil
 }
 func main() {
-	new_main()
+	//new_main()
+	main_search()
 	//json_main()
+	//file_type()
 }
 
 func new_main() {
@@ -66,6 +71,23 @@ func new_main() {
 		fmt.Println(filepath.Dir("/hogehoge/hoge.ext"))
 		fmt.Println(filepath.Dir("hogehoge"))
 	*/
+}
+func main_search() {
+
+	opt := indexer.Option{
+		RootDir: "/Users/xtakei/git/vfs-index/example/vfs",
+	}
+
+	idx, e := indexer.Open("/Users/xtakei/git/vfs-index/example/data", opt)
+	if e != nil {
+		return
+	}
+
+	z := idx.On("test", indexer.ReaderOpt{"column": "id"}).Searcher().First(func(m indexer.Match) bool {
+		v := m.Get("id").(uint64)
+		return v < 122878513
+	})
+	spew.Dump(z)
 }
 
 /*
@@ -145,5 +167,18 @@ func json_main() {
 		spew.Dump(data)
 		fmt.Printf("--A%d--\n", dec.InputOffset())
 	}
+
+}
+
+func file_type() {
+
+	buf, _ := ioutil.ReadFile("example/data/test.json")
+	kind, _ := filetype.Match(buf)
+	spew.Dump(kind)
+
+	//data, _ := ioutil.ReadFile("example/data/test.json")
+	//mime := mimetype.Detect(data)
+	mime, _ := mimetype.DetectFile("example/vfs/test/id.num.idx.122878512-122878512.21506469.00219162")
+	fmt.Println(mime.String(), mime.Extension())
 
 }
