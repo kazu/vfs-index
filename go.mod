@@ -14,3 +14,5 @@ require (
 	github.com/ugorji/go v1.1.7 // indirect
 	github.com/ugorji/go/codec v1.1.7
 )
+
+replace github.com/kazu/vfs-index => ./

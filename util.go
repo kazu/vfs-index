@@ -1,4 +1,4 @@
-package vfs-index
+package vfsindex
 
 type Range struct {
 	first uint64

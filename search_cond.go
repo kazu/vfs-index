@@ -1,17 +1,16 @@
-package vfs-index
+package vfsindex
 
 type SearchCond struct {
 	Err error
 
-	idx    		*Indexer
-	flist  		*FileList
-	idxCol    	*Column
-	
-	m     	Match
-	table  	string
-	column 	string
-	out    	chan *Record
+	idx    *Indexer
+	flist  *FileList
+	idxCol *Column
 
+	m      Match
+	table  string
+	column string
+	out    chan *Record
 }
 
 type mapInf map[string]interface{}
@@ -20,10 +19,10 @@ type Match struct {
 	col string
 	mapInf
 	FirstCol chan string
-	done chan string
+	done     chan string
 }
 
-func(m Match) Init() {
+func (m Match) Init() {
 	m.col = ""
 	m.mapInf = make(map[string]interface{})
 	m.FirstCol = make(chan string, 2)
@@ -66,7 +65,6 @@ func (cond *SearchCond) Searcher() *Searcher {
 	return cond.idxCol.Searcher()
 }
 
-
 /*
 func (cond *SearchCond) filterOnFirst(fn func(m Match) bool) *SearchCond {
 
@@ -105,7 +103,7 @@ func (cond *SearchCond) Filter(fn func(m Match) bool) *SearchCond {
 
 
 func(cond *SearchCond) Filter(fn func(m Match) bool) *SearchCond {
-	
+
 	if cond.column == "" {
 		fn(cond.m)
 		cond.column = cond.m.col
@@ -114,7 +112,7 @@ func(cond *SearchCond) Filter(fn func(m Match) bool) *SearchCond {
 	if cond.idxCol == nil {
 		cond.idxCol = cond.idx.OpenCol(cond.flist, cond.table, cond.column)
 	}
-	
+
 
 
 	return nil

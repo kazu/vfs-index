@@ -1,4 +1,4 @@
-package main
+package vfsindex_test
 
 import (
 	"testing"
@@ -14,7 +14,7 @@ func DefaultOption() {
 }
 
 func TestOpen(t *testing.T) {
-	idx , e := vfs.Open("/Users/xtakei/git/vfs-index/example/data",  DefaultOption())
+	idx, e := vfs.Open("/Users/xtakei/git/vfs-index/example/data", DefaultOption())
 	assert.NoError(t, err)
 
 }
