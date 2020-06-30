@@ -1,7 +1,5 @@
 module github.com/kazu/vfs-index
 
-go 1.14
-
 require (
 	github.com/Nr90/imgsim v0.0.0-20180202144352-5caa057144b0
 	github.com/davecgh/go-spew v1.1.1
