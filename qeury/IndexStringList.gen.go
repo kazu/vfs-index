@@ -13,7 +13,12 @@ type IndexStringList struct { // genny
 // IndexString genny
 func NewIndexStringList() *IndexStringList {
 
-	return emptyIndexStringList()
+	list := emptyIndexStringList()
+	list.NodeList = &base.NodeList{}
+	list.CommonNode.Name = "[]IndexString"
+
+	list.InitList()
+	return list
 }
 
 func emptyIndexStringList() *IndexStringList {

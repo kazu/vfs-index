@@ -125,6 +125,7 @@ func InvertedMapNumSingle(node *InvertedMapNum, e error) InvertedMapNumWithErr {
 }
 
 func NewInvertedMapNum() *InvertedMapNum {
+	base.ApplyRequestNameFields()
 	node := emptyInvertedMapNum()
 	node.NodeList = &base.NodeList{}
 	node.CommonNode.Name = "InvertedMapNum"

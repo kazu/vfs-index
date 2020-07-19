@@ -125,6 +125,7 @@ func IndexNumSingle(node *IndexNum, e error) IndexNumWithErr {
 }
 
 func NewIndexNum() *IndexNum {
+	base.ApplyRequestNameFields()
 	node := emptyIndexNum()
 	node.NodeList = &base.NodeList{}
 	node.CommonNode.Name = "IndexNum"

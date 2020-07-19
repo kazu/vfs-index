@@ -13,7 +13,12 @@ type SymbolList struct { // genny
 // Symbol genny
 func NewSymbolList() *SymbolList {
 
-	return emptySymbolList()
+	list := emptySymbolList()
+	list.NodeList = &base.NodeList{}
+	list.CommonNode.Name = "[]Symbol"
+
+	list.InitList()
+	return list
 }
 
 func emptySymbolList() *SymbolList {

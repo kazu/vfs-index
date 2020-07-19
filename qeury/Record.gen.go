@@ -125,6 +125,7 @@ func RecordSingle(node *Record, e error) RecordWithErr {
 }
 
 func NewRecord() *Record {
+	base.ApplyRequestNameFields()
 	node := emptyRecord()
 	node.NodeList = &base.NodeList{}
 	node.CommonNode.Name = "Record"

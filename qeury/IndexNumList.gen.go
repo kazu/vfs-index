@@ -13,7 +13,12 @@ type IndexNumList struct { // genny
 // IndexNum genny
 func NewIndexNumList() *IndexNumList {
 
-	return emptyIndexNumList()
+	list := emptyIndexNumList()
+	list.NodeList = &base.NodeList{}
+	list.CommonNode.Name = "[]IndexNum"
+
+	list.InitList()
+	return list
 }
 
 func emptyIndexNumList() *IndexNumList {

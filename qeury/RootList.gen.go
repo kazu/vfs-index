@@ -13,7 +13,12 @@ type RootList struct { // genny
 // Root genny
 func NewRootList() *RootList {
 
-	return emptyRootList()
+	list := emptyRootList()
+	list.NodeList = &base.NodeList{}
+	list.CommonNode.Name = "[]Root"
+
+	list.InitList()
+	return list
 }
 
 func emptyRootList() *RootList {

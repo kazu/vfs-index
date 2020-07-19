@@ -13,7 +13,12 @@ type RecordList struct { // genny
 // Record genny
 func NewRecordList() *RecordList {
 
-	return emptyRecordList()
+	list := emptyRecordList()
+	list.NodeList = &base.NodeList{}
+	list.CommonNode.Name = "[]Record"
+
+	list.InitList()
+	return list
 }
 
 func emptyRecordList() *RecordList {

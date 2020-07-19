@@ -13,7 +13,12 @@ type InvertedMapNumList struct { // genny
 // InvertedMapNum genny
 func NewInvertedMapNumList() *InvertedMapNumList {
 
-	return emptyInvertedMapNumList()
+	list := emptyInvertedMapNumList()
+	list.NodeList = &base.NodeList{}
+	list.CommonNode.Name = "[]InvertedMapNum"
+
+	list.InitList()
+	return list
 }
 
 func emptyInvertedMapNumList() *InvertedMapNumList {

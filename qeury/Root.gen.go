@@ -125,6 +125,7 @@ func RootSingle(node *Root, e error) RootWithErr {
 }
 
 func NewRoot() *Root {
+	base.ApplyRequestNameFields()
 	node := emptyRoot()
 	node.NodeList = &base.NodeList{}
 	node.CommonNode.Name = "Root"

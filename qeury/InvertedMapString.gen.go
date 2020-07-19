@@ -125,6 +125,7 @@ func InvertedMapStringSingle(node *InvertedMapString, e error) InvertedMapString
 }
 
 func NewInvertedMapString() *InvertedMapString {
+	base.ApplyRequestNameFields()
 	node := emptyInvertedMapString()
 	node.NodeList = &base.NodeList{}
 	node.CommonNode.Name = "InvertedMapString"

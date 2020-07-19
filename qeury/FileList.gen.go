@@ -13,7 +13,12 @@ type FileList struct { // genny
 // File genny
 func NewFileList() *FileList {
 
-	return emptyFileList()
+	list := emptyFileList()
+	list.NodeList = &base.NodeList{}
+	list.CommonNode.Name = "[]File"
+
+	list.InitList()
+	return list
 }
 
 func emptyFileList() *FileList {

@@ -125,6 +125,7 @@ func SymbolsSingle(node *Symbols, e error) SymbolsWithErr {
 }
 
 func NewSymbols() *Symbols {
+	base.ApplyRequestNameFields()
 	node := emptySymbols()
 	node.NodeList = &base.NodeList{}
 	node.CommonNode.Name = "Symbols"

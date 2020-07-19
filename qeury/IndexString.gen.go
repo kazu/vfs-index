@@ -125,6 +125,7 @@ func IndexStringSingle(node *IndexString, e error) IndexStringWithErr {
 }
 
 func NewIndexString() *IndexString {
+	base.ApplyRequestNameFields()
 	node := emptyIndexString()
 	node.NodeList = &base.NodeList{}
 	node.CommonNode.Name = "IndexString"

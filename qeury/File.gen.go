@@ -125,6 +125,7 @@ func FileSingle(node *File, e error) FileWithErr {
 }
 
 func NewFile() *File {
+	base.ApplyRequestNameFields()
 	node := emptyFile()
 	node.NodeList = &base.NodeList{}
 	node.CommonNode.Name = "File"
