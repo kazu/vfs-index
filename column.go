@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sort"
@@ -15,7 +14,6 @@ import (
 	query "github.com/kazu/vfs-index/qeury"
 
 	"github.com/davecgh/go-spew/spew"
-	flatbuffers "github.com/google/flatbuffers/go"
 	"github.com/kazu/loncha"
 	"github.com/kazu/vfs-index/vfs_schema"
 )
@@ -298,28 +296,14 @@ func (r *Record) ToFbs(inf interface{}) []byte {
 }
 
 func RecordFromFbs(r io.Reader) *Record {
-	raws, e := ioutil.ReadAll(r)
-	if e != nil {
-		return nil
+	root := query.Open(r, 512)
+
+	rec := root.Index().InvertedMapNum().Value()
+
+	return &Record{fileID: rec.FileId().Uint64(),
+		offset: rec.Offset().Int64(),
+		size:   rec.Size().Int64(),
 	}
-	vRoot := vfs_schema.GetRootAsRoot(raws, 0)
-	uTable := new(flatbuffers.Table)
-	version := vRoot.Version()
-	idxType := vRoot.IndexType()
-	_, _ = version, idxType
-	vRoot.Index(uTable)
-
-	fbsImap := new(vfs_schema.InvertedMapNum)
-	fbsImap.Init(uTable.Bytes, uTable.Pos)
-	imapRaw := uTable.Bytes[uTable.Pos:]
-	_ = imapRaw
-	fbsRecord := fbsImap.Value(nil)
-
-	return &Record{fileID: fbsRecord.FileId(),
-		offset: fbsRecord.Offset(),
-		size:   fbsRecord.Size(),
-	}
-
 }
 
 func (c *Column) caching() {
