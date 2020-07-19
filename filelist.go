@@ -12,10 +12,12 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/kazu/fbshelper/query/base"
+
 	"encoding/json"
 
-	flatbuffers "github.com/google/flatbuffers/go"
 	"github.com/kazu/loncha"
+	query "github.com/kazu/vfs-index/qeury"
 	"github.com/kazu/vfs-index/vfs_schema"
 )
 
@@ -182,41 +184,35 @@ func (l *FileList) FPath(id uint64) (path string, e error) {
 }
 
 func FileFromFbs(r io.Reader) *File {
-	raws, e := ioutil.ReadAll(r)
-	if e != nil {
-		return nil
-	}
-	vRoot := vfs_schema.GetRootAsRoot(raws, 0)
+	root := query.Open(r, 512)
 
-	uTable := new(flatbuffers.Table)
-	vRoot.Index(uTable)
-	fbsFile := new(vfs_schema.File)
-	fbsFile.Init(uTable.Bytes, uTable.Pos)
-
-	return &File{id: fbsFile.Id(), name: string(fbsFile.Name()), index_at: fbsFile.IndexAt()}
+	file := root.Index().File()
+	return &File{id: file.Id().Uint64(), name: string(file.Name().Bytes()), index_at: file.IndexAt().Int64()}
 }
 
 func (f *File) ToFbs(l *FileList) []byte {
 
-	b := flatbuffers.NewBuilder(0)
-	fname := b.CreateString(f.name)
+	var e error
+	root := query.NewRoot()
+	root.SetVersion(query.FromInt32(1))
+	root.WithHeader()
 
-	vfs_schema.FileStart(b)
-	vfs_schema.FileAddId(b, f.id)
-	vfs_schema.FileAddName(b, fname)
+	file := query.NewFile()
+	file.SetId(query.FromUint64(f.id))
+	file.SetName(base.FromBytes([]byte(f.name)))
 	if f.index_at == 0 {
-		vfs_schema.FileAddIndexAt(b, time.Now().UnixNano())
+		file.SetIndexAt(query.FromInt64(time.Now().UnixNano()))
 	} else {
-		vfs_schema.FileAddIndexAt(b, f.index_at)
+		file.SetIndexAt(query.FromInt64(f.index_at))
 	}
-	fbFile := vfs_schema.FileEnd(b)
 
-	vfs_schema.RootStart(b)
-	vfs_schema.RootAddVersion(b, 1)
-	vfs_schema.RootAddIndexType(b, vfs_schema.IndexFile)
-	vfs_schema.RootAddIndex(b, fbFile)
-	b.Finish(vfs_schema.RootEnd(b))
-	return b.FinishedBytes()
+	root.SetIndexType(query.FromByte(byte(vfs_schema.IndexFile)))
+	e = root.SetIndex(file.CommonNode)
+	if e != nil {
+		return nil
+	}
+	root.Merge()
+	return root.R(0)
 
 }
 
