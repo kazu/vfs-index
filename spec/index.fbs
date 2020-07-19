@@ -8,12 +8,6 @@ union Index {
     InvertedMapNum,
     InvertedMapString
 }
-/*
-table Index {
-    size:int;
-    maps:[InvertedMap];
-}
-*/
 
 table IndexNum {
     size:int;
@@ -55,5 +49,20 @@ table Root {
     version:int;
     index:Index;
 }
+
+table Files {
+    files:[File];
+}
+
+table Symbols {
+    symbols:[Symbol];
+}
+
+table Symbol {
+    key:[string](fixed_length:3);
+}
+
+file_identifier "VIDX";
+file_extension "ext";
 
 root_type Root;
