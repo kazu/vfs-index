@@ -81,11 +81,12 @@ func ColumnPathWithStatus(tdir, col string, isNum bool, s, e string, status byte
 	switch status {
 	case RECORD_WRITING:
 		// base.adding.process id.start-end
-		// <column name>.<index type>.idx.adding.<pid>.<inode number>.<start>-<end>
-		//   index type  num or tri ?
+		// <column name>.<index type>.idx.adding.<pid>.<start>-<end>
+		//   <index type> ...  num or tri ?
+		//   <start>,<end>  ... value
 		return fmt.Sprintf("%s.adding.%d.%s-%s", ColumnPath(tdir, col, isNum), os.Getgid(), s, e)
 	case RECORD_WRITTEN:
-		// <column name>.<index type>.idx.adding.<pid>.<start>-<end>
+		// <column name>.<index type>.<start>-<end>.<inode number>.<offset>
 		return fmt.Sprintf("%s.%s-%s", ColumnPath(tdir, col, isNum), s, e)
 	}
 	return ""
@@ -164,41 +165,93 @@ func toFname(i interface{}) string {
 	return fmt.Sprintf("%010x", i)
 }
 
+func toFnameTri(i interface{}) string {
+	return fmt.Sprintf("%012x", i)
+}
+
 func (c *Column) TableDir() string {
 
 	return filepath.Join(c.Dir, c.Table)
 }
 
+type IdxWriter struct {
+	IsNum        bool
+	ValueEncoder func(r *Record) []string
+}
+
+func EncodeTri(s string) (result []string) {
+
+	runes := []rune(s)
+
+	for idx := range runes {
+		if idx > len(runes)-3 {
+			break
+		}
+		fmt.Printf(" %s \n", string(runes[idx:idx+3]))
+		result = append(result,
+			fmt.Sprintf("%04x%04x%04x", runes[idx], runes[idx+1], runes[idx+2]))
+	}
+
+	return
+
+}
+
 func (r *Record) Write(c *Column) error {
 
+	var idxWriter IdxWriter
 	r.caching(c)
 
-	wPath := ColumnPathWithStatus(c.TableDir(), c.Name, true, toFname(r.Uint64Value(c)), toFname(r.Uint64Value(c)), RECORD_WRITING)
-	path := ColumnPathWithStatus(c.TableDir(), c.Name, true, toFname(r.Uint64Value(c)), toFname(r.Uint64Value(c)), RECORD_WRITTEN)
-	path = fmt.Sprintf("%s.%010x.%010x", path, r.fileID, r.offset)
-
-	//Log(LOG_DEBUG, "path=%s %s \n", wPath, c.TableDir(), c)
-
-	io, e := os.Create(wPath)
-	if e != nil {
-		Log(LOG_WARN, "F: open... %s\n", wPath)
-		return e
+	if _, ok := r.cache[c.Name].(string); ok {
+		idxWriter = IdxWriter{
+			IsNum: false,
+			ValueEncoder: func(r *Record) (results []string) {
+				//return []string{toFname(r.Uint64Value(c))}
+				return EncodeTri(r.StrValue(c))
+			},
+		}
+	} else {
+		idxWriter = IdxWriter{
+			IsNum: true,
+			ValueEncoder: func(r *Record) (results []string) {
+				return []string{toFname(r.Uint64Value(c))}
+			},
+		}
 	}
-	io.Write(r.ToFbs(r.Uint64Value(c)))
+	return r.write(c, idxWriter)
 
-	io.Close()
-	Log(LOG_DEBUG, "S: written %s \n", wPath)
-	if r.Uint64Value(c) == 0 {
-		spew.Dump(r)
-	}
+}
 
-	e = SafeRename(wPath, path)
-	if e != nil {
-		os.Remove(wPath)
-		Log(LOG_WARN, "F: rename %s -> %s \n", wPath, path)
-		return e
+func (r *Record) write(c *Column, w IdxWriter) error {
+
+	for _, vName := range w.ValueEncoder(r) {
+
+		wPath := ColumnPathWithStatus(c.TableDir(), c.Name, w.IsNum, vName, vName, RECORD_WRITING)
+		path := ColumnPathWithStatus(c.TableDir(), c.Name, w.IsNum, vName, vName, RECORD_WRITTEN)
+		path = fmt.Sprintf("%s.%010x.%010x", path, r.fileID, r.offset)
+
+		//Log(LOG_DEBUG, "path=%s %s \n", wPath, c.TableDir(), c)
+		io, e := os.Create(wPath)
+		if e != nil {
+			Log(LOG_WARN, "F: open... %s\n", wPath)
+			return e
+		}
+		io.Write(r.ToFbs(r.Uint64Value(c)))
+
+		io.Close()
+		Log(LOG_DEBUG, "S: written %s \n", wPath)
+		if r.Uint64Value(c) == 0 {
+			spew.Dump(r)
+		}
+
+		e = SafeRename(wPath, path)
+		if e != nil {
+			os.Remove(wPath)
+			Log(LOG_WARN, "F: rename %s -> %s \n", wPath, path)
+			return e
+		}
+		Log(LOG_DEBUG, "S: renamed%s -> %s \n", wPath, path)
+
 	}
-	Log(LOG_DEBUG, "S: renamed%s -> %s \n", wPath, path)
 
 	return nil
 }
@@ -264,6 +317,12 @@ func (r *Record) Uint64Value(c *Column) uint64 {
 	return uint64(v)
 }
 
+func (r *Record) StrValue(c *Column) string {
+	v, ok := r.cache[c.Name].(string)
+	_ = ok
+	return v
+}
+
 func (r *Record) ToFbs(inf interface{}) []byte {
 
 	key, ok := inf.(uint64)
@@ -307,13 +366,24 @@ func RecordFromFbs(r io.Reader) *Record {
 }
 
 func (c *Column) caching() {
+	e := c.cachingNum()
 
-	path := ColumnPathWithStatus(c.TableDir(), c.Name, true, "*", "*", RECORD_WRITTEN)
+	if e != nil {
+		c.IsNum = false
+		c.cachingTri()
+		return
+	}
+	c.IsNum = true
+	return
+}
+func (c *Column) cachingTri() (e error) {
+	path := ColumnPathWithStatus(c.TableDir(), c.Name, false, "*", "*", RECORD_WRITTEN)
 	pat := fmt.Sprintf("%s.*.*", path)
 
 	idxfiles, err := filepath.Glob(pat)
 	if err != nil {
-		Log(LOG_WARN, "%s is not found\n", pat)
+		Log(LOG_WARN, "column.cachingTri(): %s is not found\n", pat)
+		return err
 	}
 
 	for _, idxpath := range idxfiles {
@@ -337,18 +407,61 @@ func (c *Column) caching() {
 	sort.Slice(c.cache.caches, func(i, j int) bool {
 		return c.cache.caches[i].FirstEnd.first < c.cache.caches[j].FirstEnd.first
 	})
+
+	return
+
+}
+func (c *Column) cachingNum() (e error) {
+
+	path := ColumnPathWithStatus(c.TableDir(), c.Name, true, "*", "*", RECORD_WRITTEN)
+	pat := fmt.Sprintf("%s.*.*", path)
+
+	idxfiles, err := filepath.Glob(pat)
+	if err != nil || len(idxfiles) == 0 {
+		Log(LOG_WARN, "%s is not found\n", pat)
+		return ErrNotFoundFile
+	}
+
+	for _, idxpath := range idxfiles {
+		strs := strings.Split(filepath.Base(idxpath), ".")
+		if len(strs) != 6 {
+			continue
+		}
+		sRange := strs[3]
+		fileID, _ := strconv.ParseUint(strs[4], 16, 64)
+		offset, _ := strconv.ParseInt(strs[5], 16, 64)
+
+		strs = strings.Split(sRange, "-")
+		first, _ := strconv.ParseUint(strs[0], 16, 64)
+		last, _ := strconv.ParseUint(strs[1], 16, 64)
+
+		c.cache.caches = append(c.cache.caches,
+			&IdxCache{FirstEnd: Range{first: first, last: last},
+				Pos: RecordPos{fileID: fileID, offset: offset}})
+
+	}
+	sort.Slice(c.cache.caches, func(i, j int) bool {
+		return c.cache.caches[i].FirstEnd.first < c.cache.caches[j].FirstEnd.first
+	})
+
+	return
 }
 
 func (c *Column) cacheToRecord(n int) *Record {
+
 	first := c.cache.caches[n].FirstEnd.first
 	last := c.cache.caches[n].FirstEnd.last
-	path := ColumnPathWithStatus(c.TableDir(), c.Name, true, toFname(first), toFname(last), RECORD_WRITTEN)
+	path := ColumnPathWithStatus(c.TableDir(), c.Name, c.IsNum, toFname(first), toFname(last), RECORD_WRITTEN)
+	if !c.IsNum {
+		path = ColumnPathWithStatus(c.TableDir(), c.Name, c.IsNum, toFnameTri(first), toFnameTri(last), RECORD_WRITTEN)
+	}
+
 	path = fmt.Sprintf("%s.%010x.%010x", path, c.cache.caches[n].Pos.fileID, c.cache.caches[n].Pos.offset)
 
 	rio, e := os.Open(path)
 	if e != nil {
-		spew.Dump(c.cache.caches)
-		Log(LOG_WARN, "%s column index file not found\n", path)
+		//spew.Dump(c.cache.caches)
+		Log(LOG_WARN, "Column.cacheToRecord(): %s column index file not found\n", path)
 		return nil
 	}
 	record := RecordFromFbs(rio)

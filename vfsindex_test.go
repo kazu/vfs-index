@@ -2,6 +2,7 @@ package vfsindex_test
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"go/types"
@@ -38,7 +39,17 @@ func TestRegist(t *testing.T) {
 
 	e = idx.Regist("test", "id")
 	assert.NoError(t, e)
+}
 
+func TestStringRegist(t *testing.T) {
+
+	idx, e := vfs.Open("/Users/xtakei/git/vfs-index/example/data", DefaultOption())
+
+	assert.NotNil(t, idx)
+	assert.NoError(t, e)
+
+	e = idx.Regist("test", "name")
+	assert.NoError(t, e)
 }
 
 func Test_SearcherFirst(t *testing.T) {
@@ -55,6 +66,15 @@ func Test_SearcherFirst(t *testing.T) {
 	assert.NoError(t, e)
 	assert.True(t, ok)
 	assert.Equal(t, result_id < 122878513, true, "must smaller 122878513")
+
+	result = idx.On("test", vfs.ReaderOpt{"column": "name"}).Searcher().First(func(m vfs.Match) bool {
+		v := m.Get("name").(string)
+		return strings.Contains(v, "無門会")
+	})
+
+	assert.NoError(t, e)
+	assert.True(t, ok)
+	//assert.Equal(t, result_id < 122878513, true, "must smaller 122878513")
 
 }
 
@@ -117,4 +137,21 @@ func TestUtf8Rune(t *testing.T) {
 
 	fmt.Printf("a=%c 0x%4x %#U size=%d %v\n", a[0], a[0], a[0], len(string(a[0:3])), a[0:3])
 	assert.NotNil(t, a)
+}
+
+func TestEncodeTri(t *testing.T) {
+
+	str := "おはよう俺様の世界へwellcome"
+	vals := vfs.EncodeTri(str)
+	runes := []rune(str)
+	assert.Equal(t, len(runes)-2, len(vals))
+
+	var a int64
+	a = -1
+
+	b := fmt.Sprintf("%x\n", uint64(a))
+
+	l := len(b)
+	fmt.Println(l)
+
 }
