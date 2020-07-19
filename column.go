@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	query "github.com/kazu/vfs-index/qeury"
+
 	"github.com/davecgh/go-spew/spew"
 	flatbuffers "github.com/google/flatbuffers/go"
 	"github.com/kazu/loncha"
@@ -185,6 +187,7 @@ func (r *Record) Write(c *Column) error {
 		return e
 	}
 	io.Write(r.ToFbs(r.Uint64Value(c)))
+
 	io.Close()
 	Log(LOG_DEBUG, "S: written %s \n", wPath)
 	if r.Uint64Value(c) == 0 {
@@ -270,23 +273,28 @@ func (r *Record) ToFbs(inf interface{}) []byte {
 		return nil
 	}
 
-	b := flatbuffers.NewBuilder(0)
+	root := query.NewRoot()
+	root.SetVersion(query.FromInt32(1))
+	root.WithHeader()
 
-	vfs_schema.InvertedMapNumStart(b)
-	vfs_schema.InvertedMapNumAddKey(b, int64(key))
-	vfs_schema.InvertedMapNumAddValue(b, vfs_schema.CreateRecord(b, r.fileID, r.offset, r.size, 0, 0))
-	iMapNum := vfs_schema.InvertedMapNumEnd(b)
+	inv := query.NewInvertedMapNum()
+	inv.SetKey(query.FromInt64(int64(key)))
 
-	vfs_schema.RootStart(b)
-	vfs_schema.RootAddVersion(b, 1)
-	vfs_schema.RootAddIndexType(b, vfs_schema.IndexInvertedMapNum)
-	vfs_schema.RootAddIndex(b, iMapNum)
-	b.Finish(vfs_schema.RootEnd(b))
-	//vfs_schema.IndexNumStart(b)
-	//vfs_schema.IndexIndexNum
+	rec := query.NewRecord()
+	rec.SetFileId(query.FromUint64(r.fileID))
+	rec.SetOffset(query.FromInt64(r.offset))
+	rec.SetSize(query.FromInt64(r.size))
+	rec.SetOffsetOfValue(query.FromInt32(0))
+	rec.SetValueSize(query.FromInt32(0))
 
-	return b.FinishedBytes()
+	inv.SetValue(rec.CommonNode)
 
+	root.SetIndexType(query.FromByte(byte(vfs_schema.IndexInvertedMapNum)))
+	root.SetIndex(inv.CommonNode)
+
+	// FIXME return io writer ?
+	root.Merge()
+	return root.R(0)
 }
 
 func RecordFromFbs(r io.Reader) *Record {

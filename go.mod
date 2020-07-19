@@ -8,7 +8,7 @@ require (
 	github.com/gabriel-vasile/mimetype v1.1.1
 	github.com/google/flatbuffers v1.12.0
 	github.com/h2non/filetype v1.1.0
-	github.com/kazu/fbshelper v0.1.0 // indirect
+	github.com/kazu/fbshelper v0.1.0
 	github.com/kazu/loncha v0.1.1
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646 // indirect
 	github.com/stretchr/testify v1.4.0
