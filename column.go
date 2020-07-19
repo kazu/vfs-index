@@ -193,7 +193,6 @@ func EncodeTri(s string) (result []string) {
 	}
 
 	return
-
 }
 
 func (r *Record) Write(c *Column) error {
@@ -269,7 +268,8 @@ func (r *Record) parse(raw []byte) {
 			r.cache[key] = uint64(f64)
 		}
 	}
-
+	//Log(LOG_DEBUG, "decode %v \n", r.cache)
+	return
 }
 
 func (r *Record) caching(c *Column) {
@@ -447,6 +447,10 @@ func (c *Column) cachingNum() (e error) {
 	return
 }
 
+func (c *Column) keys(n int) (uint64, uint64) {
+	return c.cache.caches[n].FirstEnd.first, c.cache.caches[n].FirstEnd.last
+}
+
 func (c *Column) cacheToRecord(n int) *Record {
 
 	first := c.cache.caches[n].FirstEnd.first
@@ -541,10 +545,13 @@ func (s *Searcher) Do() <-chan *Record {
 
 }
 
-func (s *Searcher) Start(fn func(*Record) bool) {
+func (s *Searcher) Start(fn func(*Record, uint64) bool) {
 
-	first := fn(s.c.cacheToRecord(s.low))
-	last := fn(s.c.cacheToRecord(s.high))
+	firstKey, _ := s.c.keys(s.low)
+	_, lastKey := s.c.keys(s.high)
+
+	first := fn(s.c.cacheToRecord(s.low), firstKey)
+	last := fn(s.c.cacheToRecord(s.high), lastKey)
 
 	if first && !last {
 		s.mode = SEARCH_DESC
@@ -563,25 +570,30 @@ func (s *Searcher) Start(fn func(*Record) bool) {
 
 type SearchResult map[string]interface{}
 
+type KeyRecord struct {
+	key    uint64
+	record *Record
+}
+
 func (s *Searcher) First(fn func(Match) bool) SearchResult {
 
 	if s.mode == SEARCH_INIT {
 		s.mode = SEARCH_START
-		s.Start(func(r *Record) bool {
+		s.Start(func(r *Record, key uint64) bool {
 			if r == nil {
 				Log(LOG_ERROR, "cannot load record!!!\n")
 				return false
 			}
 			r.caching(s.c)
-			return fn(Match{mapInf: r.cache})
+			return fn(Match{mapInf: r.cache, key: key})
 		})
 	}
 	if s.mode == SEARCH_ALL {
-		for r := range s.searchOnNormal() {
-			r.caching(s.c)
-			if fn(Match{mapInf: r.cache}) {
+		for kr := range s.searchOnNormal() {
+			kr.record.caching(s.c)
+			if fn(Match{mapInf: kr.record.cache, key: kr.key}) {
 				s.mode = SEARCH_FINISH
-				return r.cache
+				return kr.record.cache
 			}
 		}
 	}
@@ -599,40 +611,105 @@ func (s *Searcher) First(fn func(Match) bool) SearchResult {
 	return nil
 }
 
+type ResultInfoRange struct {
+	s     *Searcher
+	start int
+	end   int
+}
+
+func (info ResultInfoRange) Start() SearchResult {
+
+	s := info.s
+	r := info.s.c.cacheToRecord(info.start)
+	r.caching(s.c)
+	return r.cache
+}
+
+func (info ResultInfoRange) Last() SearchResult {
+
+	s := info.s
+	r := info.s.c.cacheToRecord(info.end)
+	r.caching(s.c)
+	return r.cache
+}
+
+func (info ResultInfoRange) Matches() (result []SearchResult) {
+
+	result = []SearchResult{}
+
+	key, _ := info.s.c.keys(info.end)
+	for cur := info.end; cur > 0; cur-- {
+		cKey, _ := info.s.c.keys(cur)
+		if key == cKey {
+			s := info.s
+			r := info.s.c.cacheToRecord(cur)
+			r.caching(s.c)
+			result = append(result, r.cache)
+		} else {
+			break
+		}
+	}
+	return
+}
+
 func (s *Searcher) FindAll(fn func(Match) bool) (results []SearchResult) {
 
 	results = make([]SearchResult, 0, 100)
 
 	if s.mode == SEARCH_INIT {
 		s.mode = SEARCH_START
-		s.Start(func(r *Record) bool {
+		s.Start(func(r *Record, key uint64) bool {
 			if r == nil {
 				Log(LOG_ERROR, "cannot load record!!!\n")
 				return false
 			}
 			r.caching(s.c)
-			return fn(Match{mapInf: r.cache})
+			return fn(Match{mapInf: r.cache, key: key})
 		})
 	}
 	switch s.mode {
 	case SEARCH_ALL:
-		for r := range s.searchOnNormal() {
-			r.caching(s.c)
-			if fn(Match{mapInf: r.cache}) {
-				results = append(results, r.cache)
+		for kr := range s.searchOnNormal() {
+			kr.record.caching(s.c)
+			if fn(Match{mapInf: kr.record.cache, key: kr.key}) {
+				results = append(results, kr.record.cache)
 			}
 		}
 	case SEARCH_ASC, SEARCH_DESC:
-		for r := range s.bsearch(fn) {
-			results = append(results, r.cache)
+		for kr := range s.bsearch(fn) {
+			results = append(results, kr.record.cache)
 		}
 	}
 
 	return
 }
 
-func (s *Searcher) searchOnNormal() <-chan *Record {
-	ch := make(chan *Record, 10)
+func (s *Searcher) FindInfo(fn func(Match) bool) (result ResultInfoRange) {
+
+	if s.mode == SEARCH_INIT {
+		s.mode = SEARCH_START
+		s.Start(func(r *Record, key uint64) bool {
+			if r == nil {
+				Log(LOG_ERROR, "cannot load record!!!\n")
+				return false
+			}
+			r.caching(s.c)
+			return fn(Match{mapInf: r.cache, key: key})
+		})
+	}
+	switch s.mode {
+	case SEARCH_ALL:
+		return
+	case SEARCH_ASC, SEARCH_DESC:
+		info := s.bsearchInfo(fn)
+		info.s = s
+		return info
+	}
+	return
+}
+
+func (s *Searcher) searchOnNormal() <-chan KeyRecord {
+	ch := make(chan KeyRecord, 10)
 
 	if s.mode != SEARCH_ALL {
 		close(ch)
@@ -643,7 +720,10 @@ func (s *Searcher) searchOnNormal() <-chan *Record {
 			if s.mode == SEARCH_FINISH {
 				break
 			}
-			ch <- s.c.cacheToRecord(s.cur)
+			key, _ := s.c.keys(s.cur)
+			r := s.c.cacheToRecord(s.cur)
+			r.caching(s.c)
+			ch <- KeyRecord{key: key, record: r}
 		}
 		s.mode = SEARCH_FINISH
 		close(ch)
@@ -651,89 +731,81 @@ func (s *Searcher) searchOnNormal() <-chan *Record {
 	return ch
 }
 
-func (s *Searcher) bsearch(fn func(Match) bool) <-chan *Record {
-	ch := make(chan *Record, 10)
+func (s *Searcher) bsearchInfo(fn func(Match) bool) ResultInfoRange {
+
+	checked := map[int]bool{}
+
+	checked[s.cur] = true
+
+	for {
+		if s.mode == SEARCH_FINISH {
+			break
+		}
+
+		s.cur = (s.low + s.high) / 2
+		//Log(LOG_DEBUG, "ASC low=%d cur=%d high=%d\n", s.low, s.cur, s.high)
+		r := s.c.cacheToRecord(s.cur)
+		r.caching(s.c)
+		key, _ := s.c.keys(s.cur)
+
+		if fn(Match{mapInf: r.cache, key: key}) {
+
+			checked[s.cur] = true
+			if s.mode == SEARCH_ASC {
+				s.high = s.cur
+			}
+			if s.mode == SEARCH_DESC {
+				s.low = s.cur
+			}
+		} else {
+			checked[s.cur] = false
+			if s.mode == SEARCH_ASC {
+				s.low = s.cur
+			}
+			if s.mode == SEARCH_DESC {
+				s.high = s.cur
+			}
+		}
+		if s.high <= s.low+1 {
+			//s.mode = SEARCH_FINISH
+			break
+		}
+	}
+
+	info := ResultInfoRange{}
+	if s.mode == SEARCH_ASC {
+		info.start = s.high
+		info.end = len(s.c.cache.caches) - 1
+	}
+	if s.mode == SEARCH_DESC {
+		info.start = 0
+		info.end = s.low
+	}
+	return info
+
+}
+func (s *Searcher) bsearch(fn func(Match) bool) <-chan KeyRecord {
+	ch := make(chan KeyRecord, 10)
 
 	if s.mode != SEARCH_ASC && s.mode != SEARCH_DESC {
 		close(ch)
 		return ch
 	}
 	go func() {
-		checked := map[int]bool{}
 
-		checked[s.cur] = true
-		r := s.c.cacheToRecord(s.cur)
-		r.caching(s.c)
-		ch <- r
+		info := s.bsearchInfo(fn)
 
-		for {
-			if s.mode == SEARCH_FINISH {
-				break
-			}
-
-			s.cur = (s.low + s.high) / 2
-			//Log(LOG_DEBUG, "ASC low=%d cur=%d high=%d\n", s.low, s.cur, s.high)
-			r = s.c.cacheToRecord(s.cur)
+		for cur := info.start; cur <= info.end; cur++ {
+			r := s.c.cacheToRecord(cur)
 			r.caching(s.c)
-			if fn(Match{mapInf: r.cache}) {
-				ch <- r
-				checked[s.cur] = true
-				if s.mode == SEARCH_ASC {
-					s.high = s.cur
-				}
-				if s.mode == SEARCH_DESC {
-					s.low = s.cur
-				}
-			} else {
-				checked[s.cur] = false
-				if s.mode == SEARCH_ASC {
-					s.low = s.cur
-				}
-				if s.mode == SEARCH_DESC {
-					s.high = s.cur
-				}
-			}
-			if s.high <= s.low+1 {
-				//s.mode = SEARCH_FINISH
-				break
-			}
-		}
+			key, _ := s.c.keys(cur)
+			kr := KeyRecord{key: key, record: r}
+			ch <- kr
 
-		//Log(LOG_DEBUG, "!ASC low=%d cur=%d high=%d\n", s.low, s.cur, s.high)
-		//for cur := s.high; cur < len(s.c.cache.caches); cur++ {
-		var cur int
-		if s.mode == SEARCH_ASC {
-			cur = s.high
 		}
-		if s.mode == SEARCH_DESC {
-			cur = s.low
-		}
-		for {
-			if s.mode == SEARCH_ASC && cur >= len(s.c.cache.caches) {
-				break
-			}
-			if s.mode == SEARCH_DESC && cur <= 0 {
-				break
-			}
-			//Log(LOG_DEBUG, "cur=%d\n", cur)
-
-			if checked[cur] {
-				goto NEXT
-			}
-			r = s.c.cacheToRecord(cur)
-			r.caching(s.c)
-			ch <- r
-		NEXT:
-			if s.mode == SEARCH_ASC {
-				cur++
-			}
-			if s.mode == SEARCH_DESC {
-				cur--
-			}
-		}
-
 		s.mode = SEARCH_FINISH
 		close(ch)
+
 	}()
 	return ch
 }

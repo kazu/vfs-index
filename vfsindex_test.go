@@ -2,7 +2,6 @@ package vfsindex_test
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 
 	"go/types"
@@ -67,15 +66,6 @@ func Test_SearcherFirst(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, result_id < 122878513, true, "must smaller 122878513")
 
-	result = idx.On("test", vfs.ReaderOpt{"column": "name"}).Searcher().First(func(m vfs.Match) bool {
-		v := m.Get("name").(string)
-		return strings.Contains(v, "無門会")
-	})
-
-	assert.NoError(t, e)
-	assert.True(t, ok)
-	//assert.Equal(t, result_id < 122878513, true, "must smaller 122878513")
-
 }
 
 func Test_SearcherFindAll(t *testing.T) {
@@ -104,6 +94,22 @@ func Test_SearcherFindAll(t *testing.T) {
 	assert.Equal(t, 3, len(results))
 	assert.Equal(t, result_id < 122878513, true, "must smaller 122878513")
 
+}
+
+func Test_SearchStringAll(t *testing.T) {
+	idx, e := OpenIndexer()
+	sval := vfs.SearchVal("逆突き")
+
+	info := idx.On("test", vfs.ReaderOpt{"column": "name"}).Searcher().FindInfo(func(m vfs.Match) bool {
+		return m.Search("name", sval)
+	})
+
+	matches := info.Matches()
+	//result_id, ok := results[0]["id"].(uint64)
+	fmt.Printf("cnt=%d  %v\n", len(matches), matches)
+
+	assert.NoError(t, e)
+	assert.True(t, 0 < len(matches))
 }
 
 func TestSize(t *testing.T) {

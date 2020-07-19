@@ -1,5 +1,9 @@
 package vfsindex
 
+import (
+	"strconv"
+)
+
 type SearchCond struct {
 	Err error
 
@@ -16,6 +20,7 @@ type SearchCond struct {
 type mapInf map[string]interface{}
 
 type Match struct {
+	key uint64
 	col string
 	mapInf
 	FirstCol chan string
@@ -31,6 +36,21 @@ func (m Match) Init() {
 func (m Match) Get(k string) interface{} {
 
 	return m.mapInf[k]
+}
+
+func (m Match) SearchEq(k string, tri uint64) bool {
+
+	return m.key == tri
+}
+
+func (m Match) Search(k string, tri uint64) bool {
+
+	return m.key <= tri
+}
+
+func SearchVal(s string) uint64 {
+	tri, _ := strconv.ParseUint(EncodeTri(s)[0], 16, 64)
+	return tri
 }
 
 /*
