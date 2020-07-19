@@ -10,6 +10,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unsafe"
 
 	"encoding/json"
 
@@ -32,6 +33,10 @@ type File struct {
 	id       uint64
 	name     string
 	index_at int64
+}
+
+func NewFile(id uint64, name string, index_at int64) *File {
+	return &File{id: id, name: name, index_at: index_at}
 }
 
 func CreateFileList(tdir string) (flist *FileList, err error) {
@@ -171,6 +176,8 @@ func (l *FileList) FPath(id uint64) (path string, e error) {
 		path = filepath.Join(l.Dir, file.name)
 		return
 	}
+	a := unsafe.Offsetof(l.Files)
+	_ = a
 	return path, ErrNotFoundFile
 }
 
@@ -197,11 +204,16 @@ func (f *File) ToFbs(l *FileList) []byte {
 	vfs_schema.FileStart(b)
 	vfs_schema.FileAddId(b, f.id)
 	vfs_schema.FileAddName(b, fname)
-	vfs_schema.FileAddIndexAt(b, time.Now().UnixNano())
+	if f.index_at == 0 {
+		vfs_schema.FileAddIndexAt(b, time.Now().UnixNano())
+	} else {
+		vfs_schema.FileAddIndexAt(b, f.index_at)
+	}
 	fbFile := vfs_schema.FileEnd(b)
 
 	vfs_schema.RootStart(b)
 	vfs_schema.RootAddVersion(b, 1)
+	vfs_schema.RootAddIndexType(b, vfs_schema.IndexFile)
 	vfs_schema.RootAddIndex(b, fbFile)
 	b.Finish(vfs_schema.RootEnd(b))
 	return b.FinishedBytes()

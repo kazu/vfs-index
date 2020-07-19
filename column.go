@@ -51,6 +51,10 @@ func NewRecords(n int) Records {
 	return make(Records, 0, n)
 }
 
+func NewRecord(id uint64, offset, size int64) *Record {
+	return &Record{fileID: id, offset: offset, size: size}
+}
+
 func (recs Records) Add(r *Record) Records {
 	return append(recs, r)
 }
@@ -77,8 +81,11 @@ func ColumnPathWithStatus(tdir, col string, isNum bool, s, e string, status byte
 	switch status {
 	case RECORD_WRITING:
 		// base.adding.process id.start-end
+		// <column name>.<index type>.idx.adding.<pid>.<inode number>.<start>-<end>
+		//   index type  num or tri ?
 		return fmt.Sprintf("%s.adding.%d.%s-%s", ColumnPath(tdir, col, isNum), os.Getgid(), s, e)
 	case RECORD_WRITTEN:
+		// <column name>.<index type>.idx.adding.<pid>.<start>-<end>
 		return fmt.Sprintf("%s.%s-%s", ColumnPath(tdir, col, isNum), s, e)
 	}
 	return ""
@@ -272,6 +279,7 @@ func (r *Record) ToFbs(inf interface{}) []byte {
 
 	vfs_schema.RootStart(b)
 	vfs_schema.RootAddVersion(b, 1)
+	vfs_schema.RootAddIndexType(b, vfs_schema.IndexInvertedMapNum)
 	vfs_schema.RootAddIndex(b, iMapNum)
 	b.Finish(vfs_schema.RootEnd(b))
 	//vfs_schema.IndexNumStart(b)
@@ -288,9 +296,15 @@ func RecordFromFbs(r io.Reader) *Record {
 	}
 	vRoot := vfs_schema.GetRootAsRoot(raws, 0)
 	uTable := new(flatbuffers.Table)
+	version := vRoot.Version()
+	idxType := vRoot.IndexType()
+	_, _ = version, idxType
 	vRoot.Index(uTable)
+
 	fbsImap := new(vfs_schema.InvertedMapNum)
 	fbsImap.Init(uTable.Bytes, uTable.Pos)
+	imapRaw := uTable.Bytes[uTable.Pos:]
+	_ = imapRaw
 	fbsRecord := fbsImap.Value(nil)
 
 	return &Record{fileID: fbsRecord.FileId(),

@@ -1,7 +1,10 @@
 package vfsindex_test
 
 import (
+	"fmt"
 	"testing"
+
+	"go/types"
 
 	vfs "github.com/kazu/vfs-index"
 	"github.com/stretchr/testify/assert"
@@ -81,4 +84,37 @@ func Test_SearcherFindAll(t *testing.T) {
 	assert.Equal(t, 3, len(results))
 	assert.Equal(t, result_id < 122878513, true, "must smaller 122878513")
 
+}
+
+func TestSize(t *testing.T) {
+	//	assert.Equal(t, len(int64), 8)
+	a := types.Config{}
+	assert.NotNil(t, a)
+
+}
+
+func MapStore(m map[string]string, key, value string) {
+
+	m[key] = value
+
+}
+
+func TestStoreMap(t *testing.T) {
+
+	m := map[string]string{}
+
+	MapStore(m, "hoge", "hoa")
+
+	assert.Equal(t, "hoa", m["hoge"])
+
+}
+
+func TestUtf8Rune(t *testing.T) {
+
+	str := "世界おはようohayou世界"
+
+	a := []rune(str)
+
+	fmt.Printf("a=%c 0x%4x %#U size=%d %v\n", a[0], a[0], a[0], len(string(a[0:3])), a[0:3])
+	assert.NotNil(t, a)
 }
