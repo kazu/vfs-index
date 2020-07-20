@@ -55,10 +55,10 @@ func Test_SearcherFirst(t *testing.T) {
 
 	idx, e := OpenIndexer()
 
-	result := idx.On("test", vfs.ReaderOpt{"column": "id"}).Searcher().First(func(m vfs.Match) bool {
+	result := idx.On("test", vfs.ReaderOpt{"column": "id"}).Searcher().Select(func(m vfs.Match) bool {
 		v := m.Get("id").(uint64)
 		return v < 122878513
-	})
+	}).First()
 
 	result_id, ok := result["id"].(uint64)
 
@@ -71,10 +71,10 @@ func Test_SearcherFirst(t *testing.T) {
 func Test_SearcherFindAll(t *testing.T) {
 	idx, e := OpenIndexer()
 
-	results := idx.On("test", vfs.ReaderOpt{"column": "id"}).Searcher().FindAll(func(m vfs.Match) bool {
+	results := idx.On("test", vfs.ReaderOpt{"column": "id"}).Searcher().Select(func(m vfs.Match) bool {
 		v := m.Get("id").(uint64)
 		return v > 4568788719
-	})
+	}).All()
 
 	result_id, ok := results[0]["id"].(uint64)
 
@@ -83,10 +83,10 @@ func Test_SearcherFindAll(t *testing.T) {
 	assert.Equal(t, 1164, len(results))
 	assert.Equal(t, result_id > 4568788719, true, "must bigger 4568788719")
 
-	results = idx.On("test", vfs.ReaderOpt{"column": "id"}).Searcher().FindAll(func(m vfs.Match) bool {
+	results = idx.On("test", vfs.ReaderOpt{"column": "id"}).Searcher().Select(func(m vfs.Match) bool {
 		v := m.Get("id").(uint64)
 		return v < 122878513
-	})
+	}).All()
 
 	result_id, ok = results[0]["id"].(uint64)
 	assert.NoError(t, e)
@@ -100,15 +100,20 @@ func Test_SearchStringAll(t *testing.T) {
 	idx, e := OpenIndexer()
 	sval := vfs.SearchVal("逆突き")
 
-	info := idx.On("test", vfs.ReaderOpt{"column": "name"}).Searcher().FindInfo(func(m vfs.Match) bool {
-		return m.Search("name", sval)
+	info := idx.On("test", vfs.ReaderOpt{"column": "name"}).Searcher().Select(func(m vfs.Match) bool {
+		return m.Uint64("name") <= sval
+	}).Select(func(m vfs.Match) bool {
+		return m.Uint64("name") >= sval
 	})
 
-	matches := info.Matches()
+	matches := info.All()
+	assert.NoError(t, e)
+	assert.True(t, 0 < len(matches))
+
+	matches = idx.On("test", vfs.ReaderOpt{"column": "name"}).Searcher().Match("ロシア").All()
+
 	//result_id, ok := results[0]["id"].(uint64)
 	fmt.Printf("cnt=%d  %v\n", len(matches), matches)
-
-	assert.NoError(t, e)
 	assert.True(t, 0 < len(matches))
 }
 
