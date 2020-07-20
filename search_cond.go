@@ -263,7 +263,8 @@ func (sinfo *SearchInfo) All() (result []SearchResult) {
 			//key, _ := s.c.keys(cur)
 			r := s.c.cacheToRecord(cur)
 			r.caching(s.c)
-			result = append(result, r.cache)
+			hash := r.cache
+			result = append(result, hash)
 		}
 	}
 	return
@@ -317,21 +318,46 @@ func (sinfo *SearchInfo) And(dinfo *SearchInfo) *SearchInfo {
 	return sinfo
 }
 
+func (sinfo *SearchInfo) smallerMatch(s string) *SearchInfo {
+
+	var b strings.Builder
+	var n strings.Builder
+	runes := []rune(s)
+	for i := 0; i < 3; i++ {
+		if i < len([]rune(s)) {
+			fmt.Fprintf(&b, "%04x", runes[i])
+			fmt.Fprintf(&n, "%04x", runes[i]+1)
+			continue
+		}
+		fmt.Fprintf(&b, "%04x", 0)
+		fmt.Fprintf(&n, "%04x", 0)
+	}
+	sval, _ := strconv.ParseUint(b.String(), 16, 64)
+	nval, _ := strconv.ParseUint(n.String(), 16, 64)
+
+	return sinfo.Copy().Select(func(m Match) bool {
+		return m.Uint64(sinfo.s.c.Name) < nval
+	}).Select(func(m Match) bool {
+		return m.Uint64(sinfo.s.c.Name) > sval
+	})
+
+}
+
 func (sinfo *SearchInfo) Match(s string) *SearchInfo {
 
 	strs := []string{}
 
 	if len([]rune(s)) < 3 {
-		var b strings.Builder
-		runes := []rune(s)
-		for i := 0; i < 3; i++ {
-			if i < len([]rune(s)) {
-				fmt.Fprintf(&b, "%04x", runes[i])
-				continue
-			}
-			fmt.Fprintf(&b, "%04x", 0)
-		}
-		strs = append(strs, b.String())
+		// var b strings.Builder
+		// runes := []rune(s)
+		// for i := 0; i < 3; i++ {
+		// 	if i < len([]rune(s)) {
+		// 		fmt.Fprintf(&b, "%04x", runes[i])
+		// 		continue
+		// 	}
+		// 	fmt.Fprintf(&b, "%04x", 0)
+		// }
+		return sinfo.smallerMatch(s)
 	} else {
 		strs = EncodeTri(s)
 	}
@@ -340,9 +366,9 @@ func (sinfo *SearchInfo) Match(s string) *SearchInfo {
 	for i, str := range strs {
 		sval, _ := strconv.ParseUint(str, 16, 64)
 		tinfo := sinfo.Copy().Select(func(m Match) bool {
-			return m.Uint64(sinfo.s.c.Name) <= sval
+			return m.Uint64(sinfo.s.c.Name) < sval+1
 		}).Select(func(m Match) bool {
-			return m.Uint64(sinfo.s.c.Name) >= sval
+			return m.Uint64(sinfo.s.c.Name) > sval-1
 		})
 		if i == 0 {
 			rinfo = tinfo

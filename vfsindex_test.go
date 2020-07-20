@@ -137,6 +137,15 @@ func Test_SearchStringAll(t *testing.T) {
 	assert.True(t, 0 < len(matches))
 }
 
+func Test_SearchSmallString(t *testing.T) {
+	vfs.CurrentLogLoevel = vfs.LOG_WARN
+	idx, e := OpenIndexer()
+
+	matches := idx.On("test", vfs.ReaderOpt{"column": "name"}).Searcher().Match("無門").All()
+
+	assert.NoError(t, e)
+	assert.True(t, 0 < len(matches))
+}
 func TestSize(t *testing.T) {
 	//	assert.Equal(t, len(int64), 8)
 	a := types.Config{}
