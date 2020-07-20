@@ -110,7 +110,7 @@ func Test_SearchStringAll(t *testing.T) {
 	assert.NoError(t, e)
 	assert.True(t, 0 < len(matches))
 
-	matches = idx.On("test", vfs.ReaderOpt{"column": "name"}).Searcher().Match("ロシア").All()
+	matches = idx.On("test", vfs.ReaderOpt{"column": "name"}).Searcher().Match("ロシア人").All()
 
 	//result_id, ok := results[0]["id"].(uint64)
 	fmt.Printf("cnt=%d  %v\n", len(matches), matches)

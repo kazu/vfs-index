@@ -1,7 +1,9 @@
 package vfsindex
 
 import (
+	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/kazu/loncha"
 )
@@ -281,13 +283,90 @@ func (sinfo *SearchInfo) last() (result SearchResult) {
 	return r.cache
 }
 
-func (sinfo *SearchInfo) Match(s string) *SearchInfo {
+func (sinfo *SearchInfo) And(dinfo *SearchInfo) *SearchInfo {
 
-	sval := SearchVal(s)
-	return sinfo.Select(func(m Match) bool {
-		return m.Uint64(sinfo.s.c.Name) <= sval
-	}).Select(func(m Match) bool {
-		return m.Uint64(sinfo.s.c.Name) >= sval
+	s := sinfo.s
+
+	expandInfo := func(sinfo *SearchInfo) {
+		ninfos := []InfoRange{}
+		for _, info := range sinfo.infos {
+			for i := info.start; i <= info.end; i++ {
+				ninfos = append(ninfos, InfoRange{start: i, end: i})
+			}
+		}
+		sinfo.infos = ninfos
+	}
+	expandInfo(sinfo)
+	expandInfo(dinfo)
+
+	loncha.Delete(&sinfo.infos, func(i int) bool {
+		icur := sinfo.infos[i].start
+		return !loncha.Contain(dinfo.infos, func(j int) bool {
+			jcur := dinfo.infos[j].start
+			return s.c.cacheToRecord(icur).fileID == s.c.cacheToRecord(jcur).fileID
+		})
 	})
 
+	//sinfo.infos = infos
+	return sinfo
+}
+
+func (sinfo *SearchInfo) Match(s string) *SearchInfo {
+
+	strs := []string{}
+
+	if len([]rune(s)) < 3 {
+		var b strings.Builder
+		runes := []rune(s)
+		for i := 0; i < 3; i++ {
+			if i < len([]rune(s)) {
+				fmt.Fprintf(&b, "%04x", runes[i])
+				continue
+			}
+			fmt.Fprintf(&b, "%04x", 0)
+		}
+		strs = append(strs, b.String())
+	} else {
+		strs = EncodeTri(s)
+	}
+
+	rinfo := sinfo
+	for i, str := range strs {
+		sval, _ := strconv.ParseUint(str, 16, 64)
+		tinfo := sinfo.Copy().Select(func(m Match) bool {
+			return m.Uint64(sinfo.s.c.Name) <= sval
+		}).Select(func(m Match) bool {
+			return m.Uint64(sinfo.s.c.Name) >= sval
+		})
+		if i == 0 {
+			rinfo = tinfo
+		} else {
+			rinfo = rinfo.And(tinfo)
+		}
+	}
+
+	return rinfo
+}
+
+func (info *SearchInfo) Copy() *SearchInfo {
+
+	sinfo := &SearchInfo{}
+	c := info.s.c
+	sinfo.s = &Searcher{
+		c:    c,
+		low:  0,
+		high: len(c.cache.caches) - 1,
+		mode: SEARCH_INIT,
+	}
+	s := sinfo.s
+	sinfo.infos = []InfoRange{
+		InfoRange{
+			start: 0,
+			end:   len(s.c.cache.caches) - 1,
+		},
+	}
+	sinfo.befores = sinfo.infos
+	sinfo.s.low = sinfo.befores[0].start
+	sinfo.s.high = sinfo.befores[0].end
+	return sinfo
 }
