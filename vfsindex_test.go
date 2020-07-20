@@ -2,6 +2,7 @@ package vfsindex_test
 
 import (
 	"fmt"
+	"os"
 	"testing"
 
 	"go/types"
@@ -19,6 +20,24 @@ func DefaultOption() vfs.Option {
 func OpenIndexer() (*vfs.Indexer, error) {
 	return vfs.Open("/Users/xtakei/git/vfs-index/example/data", DefaultOption())
 
+}
+
+func setup() {
+	vfs.CurrentLogLoevel = vfs.LOG_WARN
+
+}
+
+func teardown() {
+
+}
+
+func TestMain(m *testing.M) {
+	setup()
+	ret := m.Run()
+	if ret == 0 {
+		teardown()
+	}
+	os.Exit(ret)
 }
 
 func TestOpen(t *testing.T) {
@@ -97,6 +116,7 @@ func Test_SearcherFindAll(t *testing.T) {
 }
 
 func Test_SearchStringAll(t *testing.T) {
+	vfs.CurrentLogLoevel = vfs.LOG_WARN
 	idx, e := OpenIndexer()
 	sval := vfs.SearchVal("逆突き")
 

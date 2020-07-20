@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/kazu/loncha"
 )
@@ -79,7 +80,12 @@ func SearchVal(s string) uint64 {
 
 func (cond *SearchCond) StartCol(col string) {
 	cond.idxCol = cond.idx.OpenCol(cond.flist, cond.table, col)
-	cond.idxCol.caching()
+	e := cond.idxCol.caching()
+	if e != nil {
+		cond.flist.Reload()
+		cond.idxCol.Update(1 * time.Minute)
+		cond.idxCol.caching()
+	}
 	cond.column = col
 }
 

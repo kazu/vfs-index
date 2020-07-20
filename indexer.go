@@ -27,7 +27,13 @@ const (
 	LOG_DEBUG
 )
 
+var CurrentLogLoevel LogLevel = LOG_DEBUG
+
 func Log(l LogLevel, f string, args ...interface{}) {
+
+	if CurrentLogLoevel < l {
+		return
+	}
 
 	var b strings.Builder
 	_ = b

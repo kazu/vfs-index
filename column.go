@@ -16,6 +16,7 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/kazu/loncha"
 	"github.com/kazu/vfs-index/vfs_schema"
+	"github.com/schollz/progressbar/v3"
 )
 
 const (
@@ -123,6 +124,7 @@ func (c *Column) Update(d time.Duration) error {
 		}
 	}
 	c.WriteDirties()
+	//Log(LOG_WARN, "Called WriteDirtues \n")
 
 	return nil
 }
@@ -135,6 +137,11 @@ func (c *Column) updateFile(f *File) {
 }
 
 func (c *Column) WriteDirties() {
+	// if CurrentLogLoevel < LOG_DEBUG {
+	// 	fmt.Fprint(os.Stderr, "writing index...")
+	// }
+	bar := progressbar.Default(int64(len(c.Dirties)))
+
 	for _, r := range c.Dirties {
 		if r.Write(c) == nil {
 			loncha.Delete(c.Dirties, func(i int) bool {
@@ -142,7 +149,11 @@ func (c *Column) WriteDirties() {
 					c.Dirties[i].offset == r.offset
 			})
 		}
+		bar.Add(1)
 	}
+	// if CurrentLogLoevel < LOG_DEBUG {
+	// 	fmt.Fprint(os.Stderr, "done\n")
+	// }
 }
 
 func (c *Column) RecordEqInt(v int) (record *Record) {
@@ -187,7 +198,7 @@ func EncodeTri(s string) (result []string) {
 		if idx > len(runes)-3 {
 			break
 		}
-		fmt.Printf(" %s \n", string(runes[idx:idx+3]))
+		Log(LOG_DEBUG, "tri-gram %s\n", string(runes[idx:idx+3]))
 		result = append(result,
 			fmt.Sprintf("%04x%04x%04x", runes[idx], runes[idx+1], runes[idx+2]))
 	}
@@ -238,14 +249,14 @@ func (r *Record) write(c *Column, w IdxWriter) error {
 
 		io.Close()
 		Log(LOG_DEBUG, "S: written %s \n", wPath)
-		if r.Uint64Value(c) == 0 {
+		if w.IsNum && r.Uint64Value(c) == 0 {
 			spew.Dump(r)
 		}
 
 		e = SafeRename(wPath, path)
 		if e != nil {
 			os.Remove(wPath)
-			Log(LOG_WARN, "F: rename %s -> %s \n", wPath, path)
+			Log(LOG_DEBUG, "F: rename %s -> %s \n", wPath, path)
 			return e
 		}
 		Log(LOG_DEBUG, "S: renamed%s -> %s \n", wPath, path)
@@ -365,12 +376,12 @@ func RecordFromFbs(r io.Reader) *Record {
 	}
 }
 
-func (c *Column) caching() {
-	e := c.cachingNum()
+func (c *Column) caching() (e error) {
+	e = c.cachingNum()
 
 	if e != nil {
 		c.IsNum = false
-		c.cachingTri()
+		e = c.cachingTri()
 		return
 	}
 	c.IsNum = true
@@ -381,9 +392,9 @@ func (c *Column) cachingTri() (e error) {
 	pat := fmt.Sprintf("%s.*.*", path)
 
 	idxfiles, err := filepath.Glob(pat)
-	if err != nil {
+	if err != nil || len(idxfiles) == 0 {
 		Log(LOG_WARN, "column.cachingTri(): %s is not found\n", pat)
-		return err
+		return ErrNotFoundFile
 	}
 
 	for _, idxpath := range idxfiles {
