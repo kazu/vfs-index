@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"github.com/davecgh/go-spew/spew"
 	vfs "github.com/kazu/vfs-index"
@@ -18,6 +19,7 @@ vfs-index
   subcmd 
 	index		index data
 	search		search data
+	merge       merge index (only 1 minute)
 
   Flags:
 	-index  	directory for index data
@@ -44,6 +46,8 @@ func main() {
 
 	case "search":
 		flagCmd = flag.NewFlagSet("search", flag.ExitOnError)
+	case "merge":
+		flagCmd = flag.NewFlagSet("merge", flag.ExitOnError)
 		//search(query, indexDir, column, table, dir, first)
 		//flag.Parse(os.Args[:2])
 	}
@@ -71,6 +75,8 @@ func main() {
 		indexing(indexDir, column, table, dir)
 	case "search":
 		search(query, indexDir, column, table, dir, first)
+	case "merge":
+		merge(indexDir, column, table, dir)
 	}
 
 	return
@@ -87,6 +93,26 @@ func indexing(indexDir, column, table, dir string) {
 		fmt.Printf("E: Open(%s) fail errpr=%s\n", dir, e)
 	}
 	e = idx.Regist(table, column)
+
+}
+
+func merge(indexDir, column, table, dir string) {
+
+	//vfs.CurrentLogLoevel = vfs.LOG_ERROR
+
+	cur, _ := os.Getwd()
+	opt := vfs.Option{
+		RootDir: filepath.Join(cur, indexDir),
+	}
+	idx, e := vfs.Open(filepath.Join(cur, dir), opt)
+
+	if e != nil {
+		fmt.Printf("E: Open(%s) fail errpr=%s\n", dir, e)
+	}
+	sCond := idx.On(table, vfs.ReaderOpt{"column": column})
+	sCond.Searcher()
+	time.Sleep(1 * time.Minute)
+	sCond.CancelAndWait()
 
 }
 

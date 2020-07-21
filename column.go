@@ -44,6 +44,7 @@ type Column struct {
 
 	ctx       context.Context
 	ctxCancel context.CancelFunc
+	done      chan bool
 }
 
 type Record struct {
@@ -183,7 +184,7 @@ func (c *Column) WriteDirties() {
 func (c *Column) cancelAndWait() {
 	if c.ctx != nil {
 		c.ctxCancel()
-		time.Sleep(200 * time.Millisecond)
+		<-c.done
 	}
 }
 
@@ -348,6 +349,9 @@ func (c *Column) loadIndex() error {
 }
 func (c *Column) mergingIndex(w IdxWriter, ctx context.Context) error {
 
+	c.done = make(chan bool, 2)
+	defer close(c.done)
+
 	noMergeIdxFiles, e := c.noMergedFPath()
 	if e != nil {
 		return e
@@ -478,6 +482,7 @@ FINISH:
 	for _, noMergeIdxFile := range noMergeIdxFiles {
 		os.Remove(noMergeIdxFile)
 	}
+	Log(LOG_DEBUG, "S: remove merged files count=%d \n", len(noMergeIdxFiles))
 
 	c.cache.infos = append(c.cache.infos,
 		&IdxInfo{
