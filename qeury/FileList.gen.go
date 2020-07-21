@@ -31,6 +31,10 @@ func (node FileList) At(i int) (result *File, e error) {
 	return
 }
 
+func (node FileList) SetAt(i int, v *File) error {
+	return node.CommonNode.SetAt(i, v.CommonNode)
+}
+
 func (node FileList) First() (result *File, e error) {
 	return node.At(0)
 }

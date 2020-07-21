@@ -6,27 +6,27 @@ import (
 	flatbuffers "github.com/google/flatbuffers/go"
 )
 
-type IndexNum struct {
+type Files struct {
 	_tab flatbuffers.Table
 }
 
-func GetRootAsIndexNum(buf []byte, offset flatbuffers.UOffsetT) *IndexNum {
+func GetRootAsFiles(buf []byte, offset flatbuffers.UOffsetT) *Files {
 	n := flatbuffers.GetUOffsetT(buf[offset:])
-	x := &IndexNum{}
+	x := &Files{}
 	x.Init(buf, n+offset)
 	return x
 }
 
-func (rcv *IndexNum) Init(buf []byte, i flatbuffers.UOffsetT) {
+func (rcv *Files) Init(buf []byte, i flatbuffers.UOffsetT) {
 	rcv._tab.Bytes = buf
 	rcv._tab.Pos = i
 }
 
-func (rcv *IndexNum) Table() flatbuffers.Table {
+func (rcv *Files) Table() flatbuffers.Table {
 	return rcv._tab
 }
 
-func (rcv *IndexNum) Indexes(obj *KeyRecord, j int) bool {
+func (rcv *Files) Files(obj *File, j int) bool {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(4))
 	if o != 0 {
 		x := rcv._tab.Vector(o)
@@ -38,7 +38,7 @@ func (rcv *IndexNum) Indexes(obj *KeyRecord, j int) bool {
 	return false
 }
 
-func (rcv *IndexNum) IndexesLength() int {
+func (rcv *Files) FilesLength() int {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(4))
 	if o != 0 {
 		return rcv._tab.VectorLen(o)
@@ -46,15 +46,15 @@ func (rcv *IndexNum) IndexesLength() int {
 	return 0
 }
 
-func IndexNumStart(builder *flatbuffers.Builder) {
+func FilesStart(builder *flatbuffers.Builder) {
 	builder.StartObject(1)
 }
-func IndexNumAddIndexes(builder *flatbuffers.Builder, indexes flatbuffers.UOffsetT) {
-	builder.PrependUOffsetTSlot(0, flatbuffers.UOffsetT(indexes), 0)
+func FilesAddFiles(builder *flatbuffers.Builder, files flatbuffers.UOffsetT) {
+	builder.PrependUOffsetTSlot(0, flatbuffers.UOffsetT(files), 0)
 }
-func IndexNumStartIndexesVector(builder *flatbuffers.Builder, numElems int) flatbuffers.UOffsetT {
+func FilesStartFilesVector(builder *flatbuffers.Builder, numElems int) flatbuffers.UOffsetT {
 	return builder.StartVector(4, numElems, 4)
 }
-func IndexNumEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
+func FilesEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()
 }

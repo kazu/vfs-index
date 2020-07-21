@@ -31,6 +31,10 @@ func (node InvertedMapNumList) At(i int) (result *InvertedMapNum, e error) {
 	return
 }
 
+func (node InvertedMapNumList) SetAt(i int, v *InvertedMapNum) error {
+	return node.CommonNode.SetAt(i, v.CommonNode)
+}
+
 func (node InvertedMapNumList) First() (result *InvertedMapNum, e error) {
 	return node.At(0)
 }

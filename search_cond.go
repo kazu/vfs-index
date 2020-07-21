@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/kazu/loncha"
+	query "github.com/kazu/vfs-index/qeury"
 )
 
 type SearchCond struct {
@@ -99,7 +100,7 @@ func (cond *SearchCond) Searcher() *SearchInfo {
 	sinfo.infos = []InfoRange{
 		InfoRange{
 			start: 0,
-			end:   len(s.c.cache.caches) - 1,
+			end:   s.c.cache.countOfKeys() - 1, ////len(s.c.cache.caches) - 1,
 		},
 	}
 	sinfo.befores = sinfo.infos
@@ -107,6 +108,10 @@ func (cond *SearchCond) Searcher() *SearchInfo {
 	sinfo.s.high = sinfo.befores[0].end
 
 	return &sinfo
+}
+
+func (cond *SearchCond) CancelAndWait() {
+	cond.idxCol.cancelAndWait()
 }
 
 type SearchInfo struct {
@@ -189,12 +194,15 @@ func (sinfo *SearchInfo) findall(fn func(Match) bool) (result []InfoRange) {
 			break
 		}
 		key, _ := s.c.keys(s.cur)
-		r := s.c.cacheToRecord(s.cur)
-		kr := KeyRecord{key: key, record: r}
-		if fn(Match{s: sinfo.s, rec: kr}) {
-			result = append(result,
-				InfoRange{start: s.cur, end: s.cur})
+		for _, r := range s.c.cacheToRecords(s.cur) {
+			kr := KeyRecord{key: key, record: r}
+			if fn(Match{s: sinfo.s, rec: kr}) {
+				result = append(result,
+					InfoRange{start: s.cur, end: s.cur})
+				break
+			}
 		}
+
 	}
 	s.mode = SEARCH_FINISH
 	return
@@ -213,7 +221,7 @@ func (sinfo *SearchInfo) bsearch(fn func(Match) bool) (info InfoRange) {
 
 		s.cur = (s.low + s.high) / 2
 		//Log(LOG_DEBUG, "ASC low=%d cur=%d high=%d\n", s.low, s.cur, s.high)
-		r := s.c.cacheToRecord(s.cur)
+		r := s.c.cacheToRecords(s.cur)[0]
 		key, _ := s.c.keys(s.cur)
 
 		if fn(Match{s: s, rec: KeyRecord{key: key, record: r}}) {
@@ -256,15 +264,23 @@ func (sinfo *SearchInfo) bsearch(fn func(Match) bool) (info InfoRange) {
 func (sinfo *SearchInfo) All() (result []SearchResult) {
 
 	result = []SearchResult{}
-	s := sinfo.s
 
+	// defer func() {
+	// 	s := sinfo.s
+	// 	if s.c.ctx != nil {
+	// 		s.c.ctxCancel()
+	// 	}
+	// }()
+
+	s := sinfo.s
 	for _, info := range sinfo.infos {
 		for cur := info.start; cur <= info.end; cur++ {
 			//key, _ := s.c.keys(cur)
-			r := s.c.cacheToRecord(cur)
-			r.caching(s.c)
-			hash := r.cache
-			result = append(result, hash)
+			for _, r := range s.c.cacheToRecords(cur) {
+				r.caching(s.c)
+				hash := r.cache
+				result = append(result, hash)
+			}
 		}
 	}
 	return
@@ -272,20 +288,35 @@ func (sinfo *SearchInfo) All() (result []SearchResult) {
 
 func (sinfo *SearchInfo) First() (result SearchResult) {
 
+	// defer func() {
+	// 	s := sinfo.s
+	// 	if s.c.ctx != nil {
+	// 		s.c.ctxCancel()
+	// 	}
+	// }()
+
 	s := sinfo.s
 	cur := sinfo.infos[0].start
 	//key, _ := s.c.keys(cur)
-	r := s.c.cacheToRecord(cur)
+	r := s.c.cacheToRecords(cur)[0]
 	r.caching(s.c)
 	return r.cache
 }
 
 func (sinfo *SearchInfo) last() (result SearchResult) {
 
+	// defer func() {
+	// 	s := sinfo.s
+	// 	if s.c.ctx != nil {
+	// 		s.c.ctxCancel()
+	// 	}
+	// }()
+
 	s := sinfo.s
 	cur := sinfo.infos[len(sinfo.infos)-1].end
 	//key, _ := s.c.keys(cur)
-	r := s.c.cacheToRecord(cur)
+	records := s.c.cacheToRecords(cur)
+	r := records[len(records)-1]
 	r.caching(s.c)
 	return r.cache
 }
@@ -303,6 +334,22 @@ func (sinfo *SearchInfo) And(dinfo *SearchInfo) *SearchInfo {
 		}
 		sinfo.infos = ninfos
 	}
+
+	fileIDIsContains := func(src, dst *query.RecordList) bool {
+		exists := map[uint64]bool{}
+		for i := 0; i < int(src.VLen()); i++ {
+			//for i := 0; i < src.Count(); i++ {
+			exists[query.RecordSingle(src.At(i)).FileId().Uint64()] = true
+		}
+
+		for i := 0; i < int(dst.VLen()); i++ {
+			//for i := 0; i < dst.Count(); i++ {
+			if _, found := exists[query.RecordSingle(dst.At(i)).FileId().Uint64()]; found {
+				return true
+			}
+		}
+		return false
+	}
 	expandInfo(sinfo)
 	expandInfo(dinfo)
 
@@ -310,7 +357,7 @@ func (sinfo *SearchInfo) And(dinfo *SearchInfo) *SearchInfo {
 		icur := sinfo.infos[i].start
 		return !loncha.Contain(dinfo.infos, func(j int) bool {
 			jcur := dinfo.infos[j].start
-			return s.c.cacheToRecord(icur).fileID == s.c.cacheToRecord(jcur).fileID
+			return fileIDIsContains(s.c.cRecordlist(icur), s.c.cRecordlist(jcur))
 		})
 	})
 
@@ -387,14 +434,14 @@ func (info *SearchInfo) Copy() *SearchInfo {
 	sinfo.s = &Searcher{
 		c:    c,
 		low:  0,
-		high: len(c.cache.caches) - 1,
+		high: c.cache.countOfKeys() - 1,
 		mode: SEARCH_INIT,
 	}
-	s := sinfo.s
+	//s := sinfo.s
 	sinfo.infos = []InfoRange{
 		InfoRange{
 			start: 0,
-			end:   len(s.c.cache.caches) - 1,
+			end:   c.cache.countOfKeys() - 1,
 		},
 	}
 	sinfo.befores = sinfo.infos

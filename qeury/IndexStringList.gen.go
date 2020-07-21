@@ -31,6 +31,10 @@ func (node IndexStringList) At(i int) (result *IndexString, e error) {
 	return
 }
 
+func (node IndexStringList) SetAt(i int, v *IndexString) error {
+	return node.CommonNode.SetAt(i, v.CommonNode)
+}
+
 func (node IndexStringList) First() (result *IndexString, e error) {
 	return node.At(0)
 }

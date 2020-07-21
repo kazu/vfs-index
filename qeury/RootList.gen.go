@@ -31,6 +31,10 @@ func (node RootList) At(i int) (result *Root, e error) {
 	return
 }
 
+func (node RootList) SetAt(i int, v *Root) error {
+	return node.CommonNode.SetAt(i, v.CommonNode)
+}
+
 func (node RootList) First() (result *Root, e error) {
 	return node.At(0)
 }

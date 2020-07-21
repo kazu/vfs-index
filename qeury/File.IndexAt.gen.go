@@ -21,6 +21,11 @@ var DUMMY_File_IndexAt bool = SetFileFields("File", "IndexAt", "Int64", File_Ind
 func (node File) IndexAt() (result *CommonNode) {
 	result = emptyCommonNode()
 	common := node.FieldAt(File_IndexAt_2)
+	if common.Node == nil {
+		result = NewCommonNode()
+		node.SetFieldAt(File_IndexAt_2, result.SelfAsCommonNode())
+		common = node.FieldAt(File_IndexAt_2)
+	}
 
 	result.Name = common.Name
 	result.NodeList = common.NodeList

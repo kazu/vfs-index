@@ -21,6 +21,11 @@ var DUMMY_IndexString_Maps bool = SetIndexStringFields("IndexString", "Maps", "[
 func (node IndexString) Maps() (result *InvertedMapStringList) {
 	result = emptyInvertedMapStringList()
 	common := node.FieldAt(IndexString_Maps_1)
+	if common.Node == nil {
+		result = NewInvertedMapStringList()
+		node.SetFieldAt(IndexString_Maps_1, result.SelfAsCommonNode())
+		common = node.FieldAt(IndexString_Maps_1)
+	}
 
 	result.Name = common.Name
 	result.NodeList = common.NodeList

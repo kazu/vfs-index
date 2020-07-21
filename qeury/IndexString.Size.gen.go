@@ -21,6 +21,11 @@ var DUMMY_IndexString_Size bool = SetIndexStringFields("IndexString", "Size", "I
 func (node IndexString) Size() (result *CommonNode) {
 	result = emptyCommonNode()
 	common := node.FieldAt(IndexString_Size_0)
+	if common.Node == nil {
+		result = NewCommonNode()
+		node.SetFieldAt(IndexString_Size_0, result.SelfAsCommonNode())
+		common = node.FieldAt(IndexString_Size_0)
+	}
 
 	result.Name = common.Name
 	result.NodeList = common.NodeList

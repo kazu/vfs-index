@@ -33,8 +33,16 @@ func emptyCommonNode() *base.CommonNode {
 	return &base.CommonNode{}
 }
 
+func NewCommonNode() *base.CommonNode {
+	return emptyCommonNode()
+}
+
 func emptyCommonNodeList() *CommonNodeList {
 	return &CommonNodeList{}
+}
+
+func NewCommonNodeList() *CommonNodeList {
+	return emptyCommonNodeList()
 }
 
 func Open(r io.Reader, cap int) Root {

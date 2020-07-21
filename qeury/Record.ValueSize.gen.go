@@ -21,6 +21,11 @@ var DUMMY_Record_ValueSize bool = SetRecordFields("Record", "ValueSize", "Int32"
 func (node Record) ValueSize() (result *CommonNode) {
 	result = emptyCommonNode()
 	common := node.FieldAt(Record_ValueSize_4)
+	if common.Node == nil {
+		result = NewCommonNode()
+		node.SetFieldAt(Record_ValueSize_4, result.SelfAsCommonNode())
+		common = node.FieldAt(Record_ValueSize_4)
+	}
 
 	result.Name = common.Name
 	result.NodeList = common.NodeList

@@ -21,6 +21,11 @@ var DUMMY_Root_Index bool = SetRootFields("Root", "Index", "Index", Root_Index_2
 func (node Root) Index() (result *Index) {
 	result = emptyIndex()
 	common := node.FieldAt(Root_Index_2)
+	if common.Node == nil {
+		result = NewIndex()
+		node.SetFieldAt(Root_Index_2, result.SelfAsCommonNode())
+		common = node.FieldAt(Root_Index_2)
+	}
 
 	result.Name = common.Name
 	result.NodeList = common.NodeList

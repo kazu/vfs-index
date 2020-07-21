@@ -21,6 +21,11 @@ var DUMMY_InvertedMapString_Key bool = SetInvertedMapStringFields("InvertedMapSt
 func (node InvertedMapString) Key() (result *CommonNode) {
 	result = emptyCommonNode()
 	common := node.FieldAt(InvertedMapString_Key_0)
+	if common.Node == nil {
+		result = NewCommonNode()
+		node.SetFieldAt(InvertedMapString_Key_0, result.SelfAsCommonNode())
+		common = node.FieldAt(InvertedMapString_Key_0)
+	}
 
 	result.Name = common.Name
 	result.NodeList = common.NodeList

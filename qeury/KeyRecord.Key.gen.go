@@ -11,20 +11,20 @@ genny must be called per Field
 */
 
 var (
-	Record_FileId_0 int = base.AtoiNoErr(Atoi("0"))
-	Record_FileId   int = Record_FileId_0
+	KeyRecord_Key_0 int = base.AtoiNoErr(Atoi("0"))
+	KeyRecord_Key   int = KeyRecord_Key_0
 )
 
-// (field inedx, field type) -> Record_IdxToType
-var DUMMY_Record_FileId bool = SetRecordFields("Record", "FileId", "Uint64", Record_FileId_0)
+// (field inedx, field type) -> KeyRecord_IdxToType
+var DUMMY_KeyRecord_Key bool = SetKeyRecordFields("KeyRecord", "Key", "Uint64", KeyRecord_Key_0)
 
-func (node Record) FileId() (result *CommonNode) {
+func (node KeyRecord) Key() (result *CommonNode) {
 	result = emptyCommonNode()
-	common := node.FieldAt(Record_FileId_0)
+	common := node.FieldAt(KeyRecord_Key_0)
 	if common.Node == nil {
 		result = NewCommonNode()
-		node.SetFieldAt(Record_FileId_0, result.SelfAsCommonNode())
-		common = node.FieldAt(Record_FileId_0)
+		node.SetFieldAt(KeyRecord_Key_0, result.SelfAsCommonNode())
+		common = node.FieldAt(KeyRecord_Key_0)
 	}
 
 	result.Name = common.Name
@@ -35,7 +35,7 @@ func (node Record) FileId() (result *CommonNode) {
 	return
 }
 
-func (node Record) SetFileId(v *base.CommonNode) error {
+func (node KeyRecord) SetKey(v *base.CommonNode) error {
 
 	return node.CommonNode.SetFieldAt(0, v)
 }

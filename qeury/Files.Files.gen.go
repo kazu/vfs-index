@@ -21,6 +21,11 @@ var DUMMY_Files_Files bool = SetFilesFields("Files", "Files", "[]File", Files_Fi
 func (node Files) Files() (result *FileList) {
 	result = emptyFileList()
 	common := node.FieldAt(Files_Files_0)
+	if common.Node == nil {
+		result = NewFileList()
+		node.SetFieldAt(Files_Files_0, result.SelfAsCommonNode())
+		common = node.FieldAt(Files_Files_0)
+	}
 
 	result.Name = common.Name
 	result.NodeList = common.NodeList

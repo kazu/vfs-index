@@ -21,6 +21,11 @@ var DUMMY_Symbol_Key bool = SetSymbolFields("Symbol", "Key", "[][]byte", Symbol_
 func (node Symbol) Key() (result *CommonNodeList) {
 	result = emptyCommonNodeList()
 	common := node.FieldAt(Symbol_Key_0)
+	if common.Node == nil {
+		result = NewCommonNodeList()
+		node.SetFieldAt(Symbol_Key_0, result.SelfAsCommonNode())
+		common = node.FieldAt(Symbol_Key_0)
+	}
 
 	result.Name = common.Name
 	result.NodeList = common.NodeList

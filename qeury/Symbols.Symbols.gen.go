@@ -21,6 +21,11 @@ var DUMMY_Symbols_Symbols bool = SetSymbolsFields("Symbols", "Symbols", "[]Symbo
 func (node Symbols) Symbols() (result *SymbolList) {
 	result = emptySymbolList()
 	common := node.FieldAt(Symbols_Symbols_0)
+	if common.Node == nil {
+		result = NewSymbolList()
+		node.SetFieldAt(Symbols_Symbols_0, result.SelfAsCommonNode())
+		common = node.FieldAt(Symbols_Symbols_0)
+	}
 
 	result.Name = common.Name
 	result.NodeList = common.NodeList

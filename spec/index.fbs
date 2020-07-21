@@ -10,8 +10,12 @@ union Index {
 }
 
 table IndexNum {
-    size:int;
-    maps:[InvertedMapNum];
+    indexes:[KeyRecord];
+}
+
+table KeyRecord {
+    key:uint64;
+    records:[Record];
 }
 
 table IndexString {
@@ -59,7 +63,7 @@ table Symbols {
 }
 
 table Symbol {
-    key:[string](fixed_length:3);
+    key:[string];
 }
 
 file_identifier "VIDX";

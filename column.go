@@ -1,9 +1,11 @@
 package vfsindex
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sort"
@@ -26,6 +28,8 @@ const (
 const (
 	RECORD_WRITING byte = iota
 	RECORD_WRITTEN
+	RECORD_MERGING
+	RECORD_MERGED
 )
 
 type Column struct {
@@ -37,6 +41,9 @@ type Column struct {
 	Dirties Records
 
 	cache *IdxCaches
+
+	ctx       context.Context
+	ctxCancel context.CancelFunc
 }
 
 type Record struct {
@@ -89,6 +96,13 @@ func ColumnPathWithStatus(tdir, col string, isNum bool, s, e string, status byte
 	case RECORD_WRITTEN:
 		// <column name>.<index type>.<start>-<end>.<inode number>.<offset>
 		return fmt.Sprintf("%s.%s-%s", ColumnPath(tdir, col, isNum), s, e)
+
+	case RECORD_MERGING:
+		return fmt.Sprintf("%s.merging.%d.%s-%s", ColumnPath(tdir, col, isNum), os.Getgid(), s, e)
+
+	case RECORD_MERGED:
+		return fmt.Sprintf("%s.merged.%s-%s", ColumnPath(tdir, col, isNum), s, e)
+
 	}
 	return ""
 
@@ -119,12 +133,22 @@ func (c *Column) Update(d time.Duration) error {
 	}
 
 	for _, f := range c.Flist.Files {
+		if len(f.name) <= len(filepath.Base(c.Table)) {
+			continue
+		}
 		if f.name[0:len(filepath.Base(c.Table))] == c.Table {
 			c.updateFile(f)
 		}
 	}
 	c.WriteDirties()
 	//Log(LOG_WARN, "Called WriteDirtues \n")
+	// FIXME
+	ctx, cancel := context.WithTimeout(context.Background(), d)
+	//defer cancel()
+	go c.MergingIndex(ctx)
+	time.Sleep(d)
+	cancel()
+	time.Sleep(1 * time.Second)
 
 	return nil
 }
@@ -156,56 +180,42 @@ func (c *Column) WriteDirties() {
 	// }
 }
 
-func (c *Column) RecordEqInt(v int) (record *Record) {
+func (c *Column) cancelAndWait() {
+	if c.ctx != nil {
+		c.ctxCancel()
+		time.Sleep(1 * time.Second)
+	}
+}
 
-	// files, e := filepath.Glob(fmt.Sprintf("%s.*-*", FileListPath(l.Dir)))
+func (c *Column) MergingIndex(ctx context.Context) error {
 
-	path := ColumnPathWithStatus(c.TableDir(), c.Name, true, toFname(uint64(v)), toFname(uint64(v)), RECORD_WRITTEN)
-	rio, e := os.Open(path)
-	if e == nil {
-		record = RecordFromFbs(rio)
-		record.caching(c)
-		rio.Close()
-		return
+	var idxWriter IdxWriter
+
+	if c.IsNumViaIndex() {
+		c.IsNum = true
 	}
 
-	return nil
-}
-
-func toFname(i interface{}) string {
-	return fmt.Sprintf("%010x", i)
-}
-
-func toFnameTri(i interface{}) string {
-	return fmt.Sprintf("%012x", i)
-}
-
-func (c *Column) TableDir() string {
-
-	return filepath.Join(c.Dir, c.Table)
-}
-
-type IdxWriter struct {
-	IsNum        bool
-	ValueEncoder func(r *Record) []string
-}
-
-func EncodeTri(s string) (result []string) {
-
-	runes := []rune(s)
-
-	for idx := range runes {
-		if idx > len(runes)-3 {
-			break
+	if !c.IsNum {
+		idxWriter = IdxWriter{
+			IsNum: false,
+			ValueEncoder: func(r *Record) (results []string) {
+				//return []string{toFname(r.Uint64Value(c))}
+				return EncodeTri(r.StrValue(c))
+			},
 		}
-		Log(LOG_DEBUG, "tri-gram %s\n", string(runes[idx:idx+3]))
-		result = append(result,
-			fmt.Sprintf("%04x%04x%04x", runes[idx], runes[idx+1], runes[idx+2]))
+	} else {
+		idxWriter = IdxWriter{
+			IsNum: true,
+			ValueEncoder: func(r *Record) (results []string) {
+				return []string{toFname(r.Uint64Value(c))}
+			},
+		}
 	}
+	return c.mergingIndex(idxWriter, ctx)
 
-	return
 }
 
+// Write ... write column index
 func (r *Record) Write(c *Column) error {
 
 	var idxWriter IdxWriter
@@ -229,6 +239,255 @@ func (r *Record) Write(c *Column) error {
 	}
 	return r.write(c, idxWriter)
 
+}
+
+func (c *Column) noMergedFPath() (idxfiles []string, err error) {
+	path := ColumnPathWithStatus(c.TableDir(), c.Name, c.IsNum, "*", "*", RECORD_WRITTEN)
+	pat := fmt.Sprintf("%s.*.*", path)
+
+	idxfiles, err = filepath.Glob(pat)
+	if err != nil || len(idxfiles) == 0 {
+		Log(LOG_WARN, "column.cachingTri(): %s is not found\n", pat)
+		err = ErrNotFoundFile
+	}
+	return
+}
+
+func idxPath2Info(idxpath string) (fileID uint64, offset int64, first uint64, last uint64) {
+
+	strs := strings.Split(filepath.Base(idxpath), ".")
+	if len(strs) < 5 {
+		return
+	}
+	if len(strs) == 5 {
+		return idxPath2InfoMerge(idxpath)
+	}
+
+	sRange := strs[3]
+
+	fileID, _ = strconv.ParseUint(strs[4], 16, 64)
+	offset, _ = strconv.ParseInt(strs[5], 16, 64)
+
+	strs = strings.Split(sRange, "-")
+	first, _ = strconv.ParseUint(strs[0], 16, 64)
+	last, _ = strconv.ParseUint(strs[1], 16, 64)
+
+	return
+
+}
+
+func idxPath2InfoMerge(idxpath string) (fileID uint64, offset int64, first uint64, last uint64) {
+
+	strs := strings.Split(filepath.Base(idxpath), ".")
+	if len(strs) != 5 {
+		return
+	}
+	sRange := strs[4]
+
+	strs = strings.Split(sRange, "-")
+	first, _ = strconv.ParseUint(strs[0], 16, 64)
+	last, _ = strconv.ParseUint(strs[1], 16, 64)
+
+	return
+
+}
+
+type IndexPathInfo struct {
+	fileID uint64
+	offset int64
+	first  uint64
+	last   uint64
+}
+
+func NewIndexInfo(fileID uint64, offset int64, first uint64, last uint64) IndexPathInfo {
+	return IndexPathInfo{
+		fileID: fileID,
+		offset: offset,
+		first:  first,
+		last:   last,
+	}
+}
+
+func (c *Column) IsNumViaIndex() bool {
+
+	path := ColumnPath(c.TableDir(), c.Name, true)
+	pat := fmt.Sprintf("%s*", path)
+	Log(LOG_WARN, "find %s files\n", pat)
+	idxfiles, err := filepath.Glob(pat)
+	if err != nil || len(idxfiles) == 0 {
+		return false
+	}
+	return true
+}
+
+func (c *Column) loadIndex() error {
+	if c.IsNumViaIndex() {
+		c.IsNum = true
+	}
+
+	path := ColumnPathWithStatus(c.TableDir(), c.Name, c.IsNum, "*", "*", RECORD_MERGED)
+	pat := fmt.Sprintf("%s", path)
+	idxfiles, err := filepath.Glob(pat)
+	if err != nil || len(idxfiles) == 0 {
+		Log(LOG_WARN, "loadIndex() %s is not found. force creation\n", pat)
+		go c.MergingIndex(c.ctx)
+		return ErrNotFoundFile
+	}
+	for _, file := range idxfiles {
+		first := NewIndexInfo(idxPath2Info(file)).first
+		last := NewIndexInfo(idxPath2Info(file)).last
+		c.cache.infos = append(c.cache.infos,
+			&IdxInfo{
+				path:  file,
+				first: first,
+				last:  last,
+			})
+	}
+	return nil
+
+}
+func (c *Column) mergingIndex(w IdxWriter, ctx context.Context) error {
+
+	noMergeIdxFiles, e := c.noMergedFPath()
+	if e != nil {
+		return e
+	}
+	//noMergeIdxFiles = noMergeIdxFiles[0:20]
+
+	vname := func(key uint64) string {
+
+		if c.IsNum {
+			return toFname(key)
+		}
+		return fmt.Sprintf("%012x", key)
+	}
+
+	root := query.NewRoot()
+	root.SetVersion(query.FromInt32(1))
+	root.WithHeader()
+	root.SetIndexType(query.FromByte(byte(vfs_schema.IndexIndexNum)))
+
+	idxNum := query.NewIndexNum()
+	keyrecords := query.NewKeyRecordList()
+
+	var keyRecord *query.KeyRecord
+	var recs *query.RecordList
+	bar := progressbar.Default(int64(len(noMergeIdxFiles)))
+
+	LastIdx := len(noMergeIdxFiles) - 1
+
+	for i, noMergeIdxFile := range noMergeIdxFiles {
+		bar.Add(1)
+
+		rio, e := os.Open(noMergeIdxFile)
+
+		if e != nil {
+			Log(LOG_WARN, "mergingIndex(): %s column index file not found\n", noMergeIdxFile)
+			continue
+		}
+		defer rio.Close()
+		record := fbsRecord(rio)
+		if keyRecord == nil ||
+			NewIndexInfo(idxPath2Info(noMergeIdxFile)).first != keyRecord.Key().Uint64() {
+
+			if keyRecord != nil {
+				cnt := keyrecords.Count()
+				keyRecord.SetRecords(recs.CommonNode)
+				keyRecord.Merge()
+				keyrecords.SetAt(cnt, keyRecord)
+
+				// if i < 10 {
+				// 	//FIXME debug only remove later
+				// 	kr, _ := keyrecords.At(cnt)
+				// 	r, _ := kr.Records().At(0)
+				// 	fmt.Printf("keyRecords[%d] = {Key: %d, len(Records)=%d records[0].file_id=%d}\n",
+				// 		cnt, kr.Key().Uint64(), kr.Records().Count(), r.Offset().Int64())
+				// 	fmt.Printf("record.file_id=%d\n", record.Offset().Int64())
+				// }
+			}
+			keyRecord = query.NewKeyRecord()
+			keyRecord.SetKey(query.FromUint64(NewIndexInfo(idxPath2Info(noMergeIdxFile)).first))
+		}
+
+		cnt := keyRecord.Records().Count()
+
+		if cnt == 0 {
+			recs = query.NewRecordList()
+		} else {
+			recs = keyRecord.Records()
+		}
+		recs.SetAt(cnt, record)
+
+		select {
+		case <-ctx.Done():
+			LastIdx = i
+			Log(LOG_WARN, "mergingIndex cancel() last_merge=%s\n", noMergeIdxFile)
+			bar.Add(len(noMergeIdxFiles) - i)
+			goto FINISH
+		default:
+		}
+
+	}
+
+FINISH:
+	cnt := keyrecords.Count()
+	if cnt == 0 {
+		Log(LOG_WARN, "mergingIndex no write\n")
+		return nil
+	}
+
+	if query.KeyRecordSingle(keyrecords.At(cnt-1)).Key().Uint64() != keyRecord.Key().Uint64() {
+		keyRecord.SetRecords(recs.CommonNode)
+		keyRecord.Merge()
+		keyrecords.SetAt(cnt, keyRecord)
+	}
+	keyrecords.Merge()
+	idxNum.SetIndexes(keyrecords.CommonNode)
+
+	root.SetIndex(idxNum.CommonNode)
+	root.Merge()
+
+	noMergeIdxFiles = noMergeIdxFiles[0 : LastIdx+1]
+
+	lastPos := len(noMergeIdxFiles) - 1
+	first := NewIndexInfo(idxPath2Info(noMergeIdxFiles[0])).first
+	last := NewIndexInfo(idxPath2Info(noMergeIdxFiles[lastPos])).last
+	// FIXME old index merge
+	wIdxPath := ColumnPathWithStatus(c.TableDir(), c.Name, w.IsNum, vname(first), vname(last), RECORD_MERGING)
+	path := ColumnPathWithStatus(c.TableDir(), c.Name, w.IsNum, vname(first), vname(last), RECORD_MERGED)
+
+	io, e := os.Create(wIdxPath)
+	if e != nil {
+		Log(LOG_WARN, "F:mergingIndex() cannot create... %s\n", wIdxPath)
+		return e
+	}
+	defer io.Close()
+
+	io.Write(root.R(0))
+	Log(LOG_DEBUG, "S: written %s \n", wIdxPath)
+	e = SafeRename(wIdxPath, path)
+	if e != nil {
+		os.Remove(wIdxPath)
+		Log(LOG_DEBUG, "F: rename %s -> %s \n", wIdxPath, path)
+		return e
+	}
+
+	Log(LOG_DEBUG, "S: renamed %s -> %s \n", wIdxPath, path)
+
+	// remove merged file
+	for _, noMergeIdxFile := range noMergeIdxFiles {
+		os.Remove(noMergeIdxFile)
+	}
+
+	c.cache.infos = append(c.cache.infos,
+		&IdxInfo{
+			path:  path,
+			first: first,
+			last:  last,
+			buf:   root.R(0),
+		})
+
+	return nil
 }
 
 func (r *Record) write(c *Column, w IdxWriter) error {
@@ -280,6 +539,56 @@ func (r *Record) parse(raw []byte) {
 		}
 	}
 	//Log(LOG_DEBUG, "decode %v \n", r.cache)
+	return
+}
+
+func (c *Column) RecordEqInt(v int) (record *Record) {
+
+	// files, e := filepath.Glob(fmt.Sprintf("%s.*-*", FileListPath(l.Dir)))
+
+	path := ColumnPathWithStatus(c.TableDir(), c.Name, true, toFname(uint64(v)), toFname(uint64(v)), RECORD_WRITTEN)
+	rio, e := os.Open(path)
+	if e == nil {
+		record = RecordFromFbs(rio)
+		record.caching(c)
+		rio.Close()
+		return
+	}
+
+	return nil
+}
+
+func toFname(i interface{}) string {
+	return fmt.Sprintf("%010x", i)
+}
+
+func toFnameTri(i interface{}) string {
+	return fmt.Sprintf("%012x", i)
+}
+
+func (c *Column) TableDir() string {
+
+	return filepath.Join(c.Dir, c.Table)
+}
+
+type IdxWriter struct {
+	IsNum        bool
+	ValueEncoder func(r *Record) []string
+}
+
+func EncodeTri(s string) (result []string) {
+
+	runes := []rune(s)
+
+	for idx := range runes {
+		if idx > len(runes)-3 {
+			break
+		}
+		Log(LOG_DEBUG, "tri-gram %s\n", string(runes[idx:idx+3]))
+		result = append(result,
+			fmt.Sprintf("%04x%04x%04x", runes[idx], runes[idx+1], runes[idx+2]))
+	}
+
 	return
 }
 
@@ -365,10 +674,14 @@ func (r *Record) ToFbs(inf interface{}) []byte {
 	return root.R(0)
 }
 
-func RecordFromFbs(r io.Reader) *Record {
+func fbsRecord(r io.Reader) *query.Record {
 	root := query.Open(r, 512)
+	return root.Index().InvertedMapNum().Value()
+}
 
-	rec := root.Index().InvertedMapNum().Value()
+func RecordFromFbs(r io.Reader) *Record {
+
+	rec := fbsRecord(r)
 
 	return &Record{fileID: rec.FileId().Uint64(),
 		offset: rec.Offset().Int64(),
@@ -377,6 +690,10 @@ func RecordFromFbs(r io.Reader) *Record {
 }
 
 func (c *Column) caching() (e error) {
+	e = c.loadIndex()
+	// if e == nil {
+	// 	return
+	// }
 	e = c.cachingNum()
 
 	if e != nil {
@@ -388,16 +705,21 @@ func (c *Column) caching() (e error) {
 	return
 }
 func (c *Column) cachingTri() (e error) {
-	path := ColumnPathWithStatus(c.TableDir(), c.Name, false, "*", "*", RECORD_WRITTEN)
-	pat := fmt.Sprintf("%s.*.*", path)
+	// path := ColumnPathWithStatus(c.TableDir(), c.Name, false, "*", "*", RECORD_WRITTEN)
+	// pat := fmt.Sprintf("%s.*.*", path)
 
-	idxfiles, err := filepath.Glob(pat)
-	if err != nil || len(idxfiles) == 0 {
-		Log(LOG_WARN, "column.cachingTri(): %s is not found\n", pat)
-		return ErrNotFoundFile
+	// idxfiles, err := filepath.Glob(pat)
+	// if err != nil || len(idxfiles) == 0 {
+	// 	Log(LOG_WARN, "column.cachingTri(): %s is not found\n", pat)
+	// 	return ErrNotFoundFile
+	// }
+	idxfiles, e := c.noMergedFPath()
+	if e != nil {
+		return e
 	}
 
 	for _, idxpath := range idxfiles {
+		//FIXME: use idxPath2Info()
 		strs := strings.Split(filepath.Base(idxpath), ".")
 		if len(strs) != 6 {
 			continue
@@ -459,9 +781,28 @@ func (c *Column) cachingNum() (e error) {
 }
 
 func (c *Column) keys(n int) (uint64, uint64) {
+	if len(c.cache.infos) > 0 {
+		pos := c.cache.head(n)
+		return pos, pos
+	}
+
 	return c.cache.caches[n].FirstEnd.first, c.cache.caches[n].FirstEnd.last
 }
 
+func (c *Column) cacheToRecords(n int) (record []*Record) {
+
+	if len(c.cache.infos) == 0 {
+		return []*Record{c.cacheToRecord(n)}
+	}
+
+	if c.cache.countInInfos() <= n {
+		return []*Record{c.cacheToRecord(n - c.cache.countInInfos())}
+	}
+
+	//first := c.cache.head(n)
+	return c.cache.records(n)
+
+}
 func (c *Column) cacheToRecord(n int) *Record {
 
 	first := c.cache.caches[n].FirstEnd.first
@@ -495,8 +836,129 @@ type IdxCache struct {
 }
 
 type IdxCaches struct {
+	infos     []*IdxInfo
 	caches    []*IdxCache
 	negatives []*Range
+}
+
+type IdxInfo struct {
+	path  string
+	first uint64
+	last  uint64
+	buf   []byte
+}
+
+func (info *IdxInfo) load(force bool) {
+
+	if !force && len(info.buf) > 0 {
+		return
+	}
+	f, e := os.Open(info.path)
+	if e != nil {
+		return
+	}
+	info.buf, e = ioutil.ReadAll(f)
+}
+
+func (c *IdxCaches) head(n int) uint64 {
+
+	if c.countInInfos() <= n {
+		return c.caches[n-c.countInInfos()].FirstEnd.first
+	}
+	cur := 0
+
+	for _, info := range c.infos {
+		info.load(false)
+		root := query.OpenByBuf(info.buf)
+		if cur+root.Index().IndexNum().Indexes().Count() < n {
+			cur += root.Index().IndexNum().Indexes().Count()
+			continue
+		}
+		pos := n - cur //cur + root.Index().IndexNum().Indexes().Count() - n
+
+		return query.KeyRecordSingle(root.Index().IndexNum().Indexes().At(pos)).Key().Uint64()
+	}
+	return 0
+}
+
+func (c *Column) cRecordlist(n int) (records *query.RecordList) {
+	if c.cache.countInInfos() <= n {
+		i := n - c.cache.countInInfos()
+		r := c.cacheToRecord(i)
+		//cur := c.cache.caches[n-c.cache.countInInfos()]
+		//r :=
+		rec := query.NewRecord()
+		rec.SetFileId(query.FromUint64(r.fileID))
+		rec.SetOffset(query.FromInt64(r.offset))
+		rec.SetSize(query.FromInt64(r.size))
+		rec.SetOffsetOfValue(query.FromInt32(0))
+		rec.SetValueSize(query.FromInt32(0))
+
+		records := query.NewRecordList()
+		records.SetAt(0, rec)
+		return records
+	}
+
+	//i := n - c.cache.countInInfos()
+
+	return c.cache.recordlist(n)
+
+}
+
+func (c *IdxCaches) recordlist(n int) (records *query.RecordList) {
+
+	cur := 0
+	for _, info := range c.infos {
+		info.load(false)
+		root := query.OpenByBuf(info.buf)
+		if cur+root.Index().IndexNum().Indexes().Count() < n {
+			cur += root.Index().IndexNum().Indexes().Count()
+			continue
+		}
+		//pos := cur + root.Index().IndexNum().Indexes().Count() - n
+		pos := n - cur
+		//recods = make([]*Record,
+		return query.KeyRecordSingle(root.Index().IndexNum().Indexes().At(pos)).Records()
+	}
+	return nil
+
+}
+
+func (c *IdxCaches) records(n int) (records []*Record) {
+
+	list := c.recordlist(n)
+	records = make([]*Record, list.Count())
+
+	for i, rec := range list.All() {
+		//buf := rec.R(rec.Node.Pos)
+		records[i] = &Record{
+			fileID: rec.FileId().Uint64(),
+			offset: rec.Offset().Int64(),
+			size:   rec.Size().Int64(),
+		}
+	}
+	return
+}
+
+func (c *IdxCaches) countInInfos() int {
+
+	cnt := 0
+	for _, info := range c.infos {
+		info.load(false)
+		root := query.OpenByBuf(info.buf)
+		cnt += root.Index().IndexNum().Indexes().Count()
+	}
+	return cnt
+
+}
+
+func (c *IdxCaches) countOfKeys() int {
+	if len(c.infos) == 0 {
+		return len(c.caches)
+	}
+
+	return c.countInInfos() + len(c.caches)
+
 }
 
 func InitIdxCaches(i *IdxCaches) {
@@ -522,13 +984,19 @@ const (
 )
 
 func (c *Column) Searcher() *Searcher {
-	if len(c.cache.caches) == 0 {
+	//if len(c.cache.caches) == 0 {
+	if c.cache.countOfKeys() == 0 || len(c.cache.caches) == 0 {
+		c.ctx, c.ctxCancel = context.WithTimeout(context.Background(), 1*time.Minute)
 		c.caching()
+	} else if c.ctx == nil {
+		c.ctx, c.ctxCancel = context.WithTimeout(context.Background(), 1*time.Minute)
+		go c.MergingIndex(c.ctx)
+		time.Sleep(200 * time.Millisecond)
 	}
 	return &Searcher{
 		c:    c,
 		low:  0,
-		high: len(c.cache.caches) - 1,
+		high: c.cache.countOfKeys() - 1,
 		mode: SEARCH_INIT,
 	}
 
@@ -561,8 +1029,10 @@ func (s *Searcher) Start(fn func(*Record, uint64) bool) {
 	firstKey, _ := s.c.keys(s.low)
 	_, lastKey := s.c.keys(s.high)
 
-	first := fn(s.c.cacheToRecord(s.low), firstKey)
-	last := fn(s.c.cacheToRecord(s.high), lastKey)
+	frec := s.c.cacheToRecords(s.low)[0]
+	lrec := s.c.cacheToRecords(s.high)[len(s.c.cacheToRecords(s.high))-1]
+	first := fn(frec, firstKey)
+	last := fn(lrec, lastKey)
 
 	if first && !last {
 		s.mode = SEARCH_DESC
@@ -595,7 +1065,9 @@ type ResultInfoRange struct {
 func (info ResultInfoRange) Start() SearchResult {
 
 	s := info.s
-	r := info.s.c.cacheToRecord(info.start)
+	recods := info.s.c.cacheToRecords(info.start)
+	r := recods[0]
+
 	r.caching(s.c)
 	return r.cache
 }
@@ -603,7 +1075,9 @@ func (info ResultInfoRange) Start() SearchResult {
 func (info ResultInfoRange) Last() SearchResult {
 
 	s := info.s
-	r := info.s.c.cacheToRecord(info.end)
+	records := info.s.c.cacheToRecords(info.end)
+	r := records[len(records)-1]
+
 	r.caching(s.c)
 	return r.cache
 }

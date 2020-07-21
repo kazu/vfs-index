@@ -23,3 +23,7 @@ func emptyIndex() *Index {
 func (node Index) Member(i int) interface{} {
 	return nil
 }
+
+func NewIndex() *Index {
+	return emptyIndex()
+}

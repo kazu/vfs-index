@@ -21,6 +21,11 @@ var DUMMY_Record_Offset bool = SetRecordFields("Record", "Offset", "Int64", Reco
 func (node Record) Offset() (result *CommonNode) {
 	result = emptyCommonNode()
 	common := node.FieldAt(Record_Offset_1)
+	if common.Node == nil {
+		result = NewCommonNode()
+		node.SetFieldAt(Record_Offset_1, result.SelfAsCommonNode())
+		common = node.FieldAt(Record_Offset_1)
+	}
 
 	result.Name = common.Name
 	result.NodeList = common.NodeList

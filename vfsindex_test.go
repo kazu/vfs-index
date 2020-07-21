@@ -74,12 +74,15 @@ func Test_SearcherFirst(t *testing.T) {
 
 	idx, e := OpenIndexer()
 
-	result := idx.On("test", vfs.ReaderOpt{"column": "id"}).Searcher().Select(func(m vfs.Match) bool {
+	sCond := idx.On("test", vfs.ReaderOpt{"column": "id"})
+
+	result := sCond.Searcher().Select(func(m vfs.Match) bool {
 		v := m.Get("id").(uint64)
 		return v < 122878513
 	}).First()
 
 	result_id, ok := result["id"].(uint64)
+	sCond.CancelAndWait()
 
 	assert.NoError(t, e)
 	assert.True(t, ok)
@@ -90,7 +93,9 @@ func Test_SearcherFirst(t *testing.T) {
 func Test_SearcherFindAll(t *testing.T) {
 	idx, e := OpenIndexer()
 
-	results := idx.On("test", vfs.ReaderOpt{"column": "id"}).Searcher().Select(func(m vfs.Match) bool {
+	sCond := idx.On("test", vfs.ReaderOpt{"column": "id"})
+
+	results := sCond.Searcher().Select(func(m vfs.Match) bool {
 		v := m.Get("id").(uint64)
 		return v > 4568788719
 	}).All()
@@ -99,10 +104,10 @@ func Test_SearcherFindAll(t *testing.T) {
 
 	assert.NoError(t, e)
 	assert.True(t, ok)
-	assert.Equal(t, 1164, len(results))
+	assert.True(t, 1164 <= len(results))
 	assert.Equal(t, result_id > 4568788719, true, "must bigger 4568788719")
 
-	results = idx.On("test", vfs.ReaderOpt{"column": "id"}).Searcher().Select(func(m vfs.Match) bool {
+	results = sCond.Searcher().Select(func(m vfs.Match) bool {
 		v := m.Get("id").(uint64)
 		return v < 122878513
 	}).All()
@@ -112,6 +117,7 @@ func Test_SearcherFindAll(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, 3, len(results))
 	assert.Equal(t, result_id < 122878513, true, "must smaller 122878513")
+	sCond.CancelAndWait()
 
 }
 
@@ -120,7 +126,9 @@ func Test_SearchStringAll(t *testing.T) {
 	idx, e := OpenIndexer()
 	sval := vfs.SearchVal("逆突き")
 
-	info := idx.On("test", vfs.ReaderOpt{"column": "name"}).Searcher().Select(func(m vfs.Match) bool {
+	sCond := idx.On("test", vfs.ReaderOpt{"column": "name"})
+
+	info := sCond.Searcher().Select(func(m vfs.Match) bool {
 		return m.Uint64("name") <= sval
 	}).Select(func(m vfs.Match) bool {
 		return m.Uint64("name") >= sval
@@ -130,21 +138,27 @@ func Test_SearchStringAll(t *testing.T) {
 	assert.NoError(t, e)
 	assert.True(t, 0 < len(matches))
 
-	matches = idx.On("test", vfs.ReaderOpt{"column": "name"}).Searcher().Match("ロシア人").All()
+	matches2 := sCond.Searcher().Match("ロシア人").All()
 
 	//result_id, ok := results[0]["id"].(uint64)
-	fmt.Printf("cnt=%d  %v\n", len(matches), matches)
-	assert.True(t, 0 < len(matches))
+	//idx.Cols["name"].CancelAndWait()
+	sCond.CancelAndWait()
+	fmt.Printf("cnt=%d  %v\n", len(matches2), matches2)
+	assert.NoError(t, e)
+	assert.True(t, 0 < len(matches2))
+
 }
 
 func Test_SearchSmallString(t *testing.T) {
 	vfs.CurrentLogLoevel = vfs.LOG_WARN
 	idx, e := OpenIndexer()
 
-	matches := idx.On("test", vfs.ReaderOpt{"column": "name"}).Searcher().Match("無門").All()
+	sCond := idx.On("test", vfs.ReaderOpt{"column": "name"})
+	matches := sCond.Searcher().Match("無門").All()
 
 	assert.NoError(t, e)
 	assert.True(t, 0 < len(matches))
+	sCond.CancelAndWait()
 }
 func TestSize(t *testing.T) {
 	//	assert.Equal(t, len(int64), 8)
