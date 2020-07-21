@@ -106,8 +106,10 @@ func search(query, indexDir, column, table, dir string, first bool) {
 	ival, e := strconv.ParseUint(query, 10, 64)
 
 	var info *vfs.SearchInfo
+
+	sCond := idx.On(table, vfs.ReaderOpt{"column": column})
 	if e == nil {
-		info = idx.On(table, vfs.ReaderOpt{"column": column}).Searcher().Select(func(m vfs.Match) bool {
+		info = sCond.Searcher().Select(func(m vfs.Match) bool {
 			v := m.Get(column).(uint64)
 			return v <= ival
 		}).Select(func(m vfs.Match) bool {
@@ -115,7 +117,7 @@ func search(query, indexDir, column, table, dir string, first bool) {
 			return v >= ival
 		})
 	} else {
-		info = idx.On(table, vfs.ReaderOpt{"column": column}).Searcher().Match(query)
+		info = sCond.Searcher().Match(query)
 	}
 
 	if first {
@@ -127,4 +129,5 @@ func search(query, indexDir, column, table, dir string, first bool) {
 			fmt.Printf("%s\n", spew.Sdump(result))
 		}
 	}
+	sCond.CancelAndWait()
 }

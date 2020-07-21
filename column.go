@@ -183,7 +183,7 @@ func (c *Column) WriteDirties() {
 func (c *Column) cancelAndWait() {
 	if c.ctx != nil {
 		c.ctxCancel()
-		time.Sleep(1 * time.Second)
+		time.Sleep(200 * time.Millisecond)
 	}
 }
 
