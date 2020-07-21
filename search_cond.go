@@ -275,7 +275,6 @@ func (sinfo *SearchInfo) All() (result []SearchResult) {
 	s := sinfo.s
 	for _, info := range sinfo.infos {
 		for cur := info.start; cur <= info.end; cur++ {
-			//key, _ := s.c.keys(cur)
 			for _, r := range s.c.cacheToRecords(cur) {
 				r.caching(s.c)
 				hash := r.cache

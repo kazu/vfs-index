@@ -16,6 +16,7 @@ require (
 	github.com/stretchr/testify v1.4.0
 	github.com/ugorji/go v1.1.7 // indirect
 	github.com/ugorji/go/codec v1.1.7
+	github.com/vbauerster/mpb/v5 v5.2.4
 )
 
 // replace github.com/kazu/fbshelper => ../fbshelper/

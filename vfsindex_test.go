@@ -48,7 +48,15 @@ func TestOpen(t *testing.T) {
 
 }
 
+type DiscardString struct{}
+
+func (io DiscardString) WriteString(s string) (int, error) {
+	return len(s), nil
+}
+
 func TestRegist(t *testing.T) {
+
+	vfs.LogWriter = DiscardString{}
 
 	idx, e := vfs.Open("/Users/xtakei/git/vfs-index/example/data", DefaultOption())
 
@@ -60,6 +68,8 @@ func TestRegist(t *testing.T) {
 }
 
 func TestStringRegist(t *testing.T) {
+	//vfs.CurrentLogLoevel = vfs.LOG_DEBUG
+	//vfs.LogWriter = DiscardString{}
 
 	idx, e := vfs.Open("/Users/xtakei/git/vfs-index/example/data", DefaultOption())
 
@@ -91,6 +101,9 @@ func Test_SearcherFirst(t *testing.T) {
 }
 
 func Test_SearcherFindAll(t *testing.T) {
+
+	//vfs.LogWriter = DiscardString{}
+
 	idx, e := OpenIndexer()
 
 	sCond := idx.On("test", vfs.ReaderOpt{"column": "id"})
@@ -115,7 +128,7 @@ func Test_SearcherFindAll(t *testing.T) {
 	result_id, ok = results[0]["id"].(uint64)
 	assert.NoError(t, e)
 	assert.True(t, ok)
-	assert.Equal(t, 3, len(results))
+	assert.True(t, 3 <= len(results))
 	assert.Equal(t, result_id < 122878513, true, "must smaller 122878513")
 	sCond.CancelAndWait()
 
@@ -123,6 +136,7 @@ func Test_SearcherFindAll(t *testing.T) {
 
 func Test_SearchStringAll(t *testing.T) {
 	vfs.CurrentLogLoevel = vfs.LOG_WARN
+
 	idx, e := OpenIndexer()
 	sval := vfs.SearchVal("逆突き")
 

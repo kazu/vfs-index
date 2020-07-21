@@ -19,6 +19,8 @@ import (
 	"github.com/kazu/loncha"
 	"github.com/kazu/vfs-index/vfs_schema"
 	"github.com/schollz/progressbar/v3"
+	"github.com/vbauerster/mpb/v5"
+	"github.com/vbauerster/mpb/v5/decor"
 )
 
 const (
@@ -149,7 +151,7 @@ func (c *Column) Update(d time.Duration) error {
 	go c.MergingIndex(ctx)
 	time.Sleep(d)
 	cancel()
-	time.Sleep(1 * time.Second)
+	<-c.done
 
 	return nil
 }
@@ -376,12 +378,22 @@ func (c *Column) mergingIndex(w IdxWriter, ctx context.Context) error {
 
 	var keyRecord *query.KeyRecord
 	var recs *query.RecordList
-	bar := progressbar.Default(int64(len(noMergeIdxFiles)))
+	total := len(noMergeIdxFiles)
+	p := mpb.New(mpb.WithWidth(64))
+	bar := p.AddBar(int64(total),
+		mpb.PrependDecorators(
+			decor.Name("index merging", decor.WC{W: len("index merging") + 1, C: decor.DidentRight}),
+			decor.OnComplete(
+				decor.AverageETA(decor.ET_STYLE_GO, decor.WC{W: 4}), "done",
+			),
+		),
+		mpb.AppendDecorators(decor.CountersNoUnit("%d / %d")),
+	)
 
 	LastIdx := len(noMergeIdxFiles) - 1
 
 	for i, noMergeIdxFile := range noMergeIdxFiles {
-		bar.Add(1)
+		bar.Increment()
 
 		rio, e := os.Open(noMergeIdxFile)
 
@@ -426,7 +438,7 @@ func (c *Column) mergingIndex(w IdxWriter, ctx context.Context) error {
 		case <-ctx.Done():
 			LastIdx = i
 			Log(LOG_WARN, "mergingIndex cancel() last_merge=%s\n", noMergeIdxFile)
-			bar.Add(len(noMergeIdxFiles) - i)
+			bar.IncrBy(len(noMergeIdxFiles) - i)
 			goto FINISH
 		default:
 		}
@@ -875,7 +887,7 @@ func (c *IdxCaches) head(n int) uint64 {
 	for _, info := range c.infos {
 		info.load(false)
 		root := query.OpenByBuf(info.buf)
-		if cur+root.Index().IndexNum().Indexes().Count() < n {
+		if cur+root.Index().IndexNum().Indexes().Count() <= n {
 			cur += root.Index().IndexNum().Indexes().Count()
 			continue
 		}
@@ -916,7 +928,7 @@ func (c *IdxCaches) recordlist(n int) (records *query.RecordList) {
 	for _, info := range c.infos {
 		info.load(false)
 		root := query.OpenByBuf(info.buf)
-		if cur+root.Index().IndexNum().Indexes().Count() < n {
+		if cur+root.Index().IndexNum().Indexes().Count() <= n {
 			cur += root.Index().IndexNum().Indexes().Count()
 			continue
 		}

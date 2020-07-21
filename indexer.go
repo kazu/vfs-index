@@ -2,6 +2,7 @@ package vfsindex
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,6 +29,7 @@ const (
 )
 
 var CurrentLogLoevel LogLevel = LOG_DEBUG
+var LogWriter io.StringWriter = os.Stderr
 
 func Log(l LogLevel, f string, args ...interface{}) {
 
@@ -46,7 +48,7 @@ func Log(l LogLevel, f string, args ...interface{}) {
 		b.WriteString("E: ")
 	}
 	fmt.Fprintf(&b, f, args...)
-	os.Stderr.WriteString(b.String())
+	LogWriter.WriteString(b.String())
 	return
 }
 
