@@ -45,6 +45,60 @@ index merging done [============================================================
 ```
 
 
+## goで使う
+
+import package 
+
+```go
+import vfs "github.com/kazu/vfs-index"
+```
+
+
+indexing 
+
+```go
+func DefaultOption() vfs.Option {
+	return vfs.RootDir("/Users/xtakei/vfs-idx")
+}
+
+
+idx, e := vfs.Open("/Users/xtakei/example/data", DefaultOption())
+e = idx.Regist("test", "id")
+```
+
+searching 
+```go
+func DefaultOption() vfs.Option {
+	return vfs.RootDir("/Users/xtakei/vfs-idx")
+}
+
+// search number index
+idx, e := vfs.Open("/Users/xtakei/example/data", DefaultOption())
+sCond := idx.On("test", vfs.ReaderColumn("id"), vfs.Output(vfs.MapInfOutput))
+
+record := sCond.Searcher().Select(func(m vfs.Match) bool {
+		v := m.Get("id").(uint64)
+		return v < 122878513
+}).First()
+
+// search by matching substring
+sCondName := idx.On("test", vfs.ReaderColumn("name"), vfs.Output(vfs.MapInfOutput))
+matches2 := sCondName.Searcher().Match("ロシア人").All()
+
+```
+
+
+index merging
+stop after 1 minutes.
+
+```go
+
+idx, e := vfs.Open("/Users/xtakei/example/data", DefaultOption())
+sCond := idx.On("test", vfs.ReaderColumn("id"), vfs.Output(vfs.MapInfOutput))
+sCond.Searcher()
+time.Sleep(1 * time.Minute)
+sCond.CancelAndWait()
+```
 
 
 
