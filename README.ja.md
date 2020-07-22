@@ -29,7 +29,7 @@ index サブコマンドでindex 登録します。登録せずに search 時に
 
 ```console 
 $ go get github.com/kazu/vfs-index/cmd/vfs-index
-$ vfs-index index search  --index=../idx --column=name --table=test --data=./
+$ vfs-index index  --index=../idx --column=name --table=test --data=./
 100% |██████████████████████████████████████████████████| (2316/2316, 2072 it/s) [1s:0s]
 $
 ```

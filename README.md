@@ -30,7 +30,7 @@ indexing this data. if indexing stop by ctrl-c , indexing will continue on run n
 
 ```console 
 $ go get github.com/kazu/vfs-index/cmd/vfs-index
-$ vfs-index index search  --index=../idx --column=name --table=test --data=./
+$ vfs-index index --index=../idx --column=name --table=test --data=./
 100% |██████████████████████████████████████████████████| (2316/2316, 2072 it/s) [1s:0s]
 $
 ```
@@ -45,6 +45,12 @@ $ vfs-index search  -q="2011_04" --index=../idx --column=name --table=test --dat
 index merging done [==============================================================] 67507 / 67507
 ```
 
+merge index
+
+```
+$ vfs-index merge --index=../idx --column=name --table=test --data=./
+index merging done [==============================================================] 67507 / 67507
+```
 
 
 
