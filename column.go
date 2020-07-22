@@ -170,6 +170,7 @@ var DefaultDecoder []Decoder = []Decoder{
 	},
 }
 
+// GetDecoder ... return format Decoder/Encoder from fname(file name)
 func GetDecoder(fname string) (dec Decoder, e error) {
 	if len(fname) < 1 {
 		return dec, ErrInvalidTableName
@@ -1132,6 +1133,7 @@ const (
 	SEARCH_FINISH
 )
 
+// Searcher ... return Search object for search operation
 func (c *Column) Searcher() *Searcher {
 	//if len(c.cache.caches) == 0 {
 	if c.cache.countOfKeys() == 0 || len(c.cache.caches) == 0 {
@@ -1173,7 +1175,7 @@ func (s *Searcher) Do() <-chan *Record {
 
 }
 
-func (s *Searcher) Start(fn func(*Record, uint64) bool) {
+func (s *Searcher) start(fn func(*Record, uint64) bool) {
 
 	firstKey, _ := s.c.keys(s.low)
 	_, lastKey := s.c.keys(s.high)

@@ -10,6 +10,7 @@ import (
 	query "github.com/kazu/vfs-index/qeury"
 )
 
+// SearchCond .. saerch condition object.
 type SearchCond struct {
 	Err error
 
@@ -33,17 +34,20 @@ type mapInf map[string]interface{}
 // 	done     chan string
 // }
 
+// Match ... instance for match condition
 type Match struct {
 	s   *Searcher
 	rec KeyRecord
 }
 
+// Init ... initialize Match
 func (m Match) Init() {
 	// m.col = ""
 	// m.mapInf = make(map[string]interface{})
 	// m.FirstCol = make(chan string, 2)
 }
 
+// Get ... get attribute/field .. for use search filter.
 func (m Match) Get(k string) interface{} {
 
 	if m.s.c.Name == k {
@@ -54,6 +58,7 @@ func (m Match) Get(k string) interface{} {
 	return m.rec.record.cache[k]
 }
 
+// Uint64 ...  return key on field/attribute is index key
 func (m Match) Uint64(k string) uint64 {
 
 	if m.s.c.Name == k {
@@ -64,22 +69,13 @@ func (m Match) Uint64(k string) uint64 {
 	return m.rec.record.cache[k].(uint64)
 }
 
-// func (m Match) SearchEq(k string, tri uint64) bool {
-
-// 	return m.key == tri
-// }
-
-// func (m Match) Search(k string, tri uint64) bool {
-
-// 	return m.key <= tri
-// }
-
+// SearchVal ... convert tri-utf8 to uint64 ( mb4 not supported)
 func SearchVal(s string) uint64 {
 	tri, _ := strconv.ParseUint(EncodeTri(s)[0], 16, 64)
 	return tri
 }
 
-func (cond *SearchCond) StartCol(col string) {
+func (cond *SearchCond) startCol(col string) {
 	cond.idxCol = cond.idx.OpenCol(cond.flist, cond.table, col)
 	e := cond.idxCol.caching()
 	if e != nil {
@@ -110,10 +106,12 @@ func (cond *SearchCond) Searcher() *SearchInfo {
 	return &sinfo
 }
 
+// CancelAndWait ... wait for canceld backgraound routine( mainly merging index)
 func (cond *SearchCond) CancelAndWait() {
 	cond.idxCol.cancelAndWait()
 }
 
+// SearchInfo ... search result information. this is use by conditon chain.
 type SearchInfo struct {
 	s       *Searcher
 	befores []InfoRange
@@ -125,6 +123,7 @@ type InfoRange struct {
 	end   int
 }
 
+// Select ...  set condition for searching
 func (sinfo *SearchInfo) Select(fn func(Match) bool) (result *SearchInfo) {
 
 	s := sinfo.s
@@ -135,7 +134,7 @@ func (sinfo *SearchInfo) Select(fn func(Match) bool) (result *SearchInfo) {
 
 	if s.mode == SEARCH_INIT {
 		s.mode = SEARCH_START
-		s.Start(func(r *Record, key uint64) bool {
+		s.start(func(r *Record, key uint64) bool {
 			if r == nil {
 				Log(LOG_ERROR, "cannot load record!!!\n")
 				return false
@@ -261,12 +260,14 @@ func (sinfo *SearchInfo) bsearch(fn func(Match) bool) (info InfoRange) {
 
 }
 
+// ToMapInf ... convert Record to map[string]interface . this is used mainly by search result.
 func (s *SearchCond) ToMapInf(r *Record) map[string]interface{} {
 
 	r.caching(s.idxCol)
 	return r.cache
 }
 
+// ToJsonStr ... convert Record to json string . this is used mainly by search result.
 func (s *SearchCond) ToJsonStr(r *Record) string {
 
 	c := s.idxCol
@@ -280,6 +281,7 @@ func (s *SearchCond) ToJsonStr(r *Record) string {
 	return string(raw)
 }
 
+// ToJsonStrs ... convert slice of Record to slice of json string . this is used mainly by search result.
 func (s *SearchCond) ToJsonStrs(rlist []*Record) (result []string) {
 
 	c := s.idxCol
@@ -297,6 +299,7 @@ func (s *SearchCond) ToJsonStrs(rlist []*Record) (result []string) {
 
 }
 
+// ToMapInfs ... convert slice of Record to slice of map[string]interface . this is used mainly by search result.
 func (s *SearchCond) ToMapInfs(rlist []*Record) (result []map[string]interface{}) {
 
 	for _, r := range rlist {
@@ -306,19 +309,10 @@ func (s *SearchCond) ToMapInfs(rlist []*Record) (result []map[string]interface{}
 	return
 }
 
+// All ... return records of all result
 func (sinfo *SearchInfo) All() (result []*Record) {
 
 	result = []*Record{}
-
-	// // defer func() {
-	// // 	s := sinfo.s
-	// // 	if s.c.ctx != nil {
-	// // 		s.c.ctxCancel()
-	// // 	}
-	// // }()
-	// r := sinfo.s.c.cacheToRecords(0)[0]
-	// fname, _ := sinfo.s.c.Flist.FPath(r.fileID)
-	// decoder, _ := GetDecoder(fname)
 
 	s := sinfo.s
 	for _, info := range sinfo.infos {
@@ -333,6 +327,7 @@ func (sinfo *SearchInfo) All() (result []*Record) {
 	return
 }
 
+// First ... return first match Record
 func (sinfo *SearchInfo) First() (result *Record) {
 
 	s := sinfo.s
@@ -362,6 +357,7 @@ func (sinfo *SearchInfo) last() (result *Record) {
 	return r
 }
 
+// And ... and boolean operation between search results
 func (sinfo *SearchInfo) And(dinfo *SearchInfo) *SearchInfo {
 
 	s := sinfo.s
@@ -431,6 +427,7 @@ func (sinfo *SearchInfo) smallerMatch(s string) *SearchInfo {
 
 }
 
+// Match ... set condition for string match
 func (sinfo *SearchInfo) Match(s string) *SearchInfo {
 
 	strs := []string{}
@@ -468,6 +465,7 @@ func (sinfo *SearchInfo) Match(s string) *SearchInfo {
 	return rinfo
 }
 
+// Copy ... copy SearchInfo
 func (info *SearchInfo) Copy() *SearchInfo {
 
 	sinfo := &SearchInfo{}

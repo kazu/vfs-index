@@ -11,6 +11,7 @@ type optionState struct {
 //type ReaderOpt map[string]string
 type Option func(*optionState)
 
+// ReaderColumn ... config for columname for search/read
 func ReaderColumn(s string) Option {
 
 	return func(opt *optionState) {
@@ -25,6 +26,7 @@ func mergeOpt(s *optionState, opts ...Option) {
 	}
 }
 
+// RootDir ... set index top directory
 func RootDir(s string) Option {
 	return func(opt *optionState) {
 		opt.rootDir = s

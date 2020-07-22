@@ -63,6 +63,8 @@ func TrimFilePathSuffix(path string) string {
 	return path[0 : len(path)-len(filepath.Ext(path))]
 
 }
+
+// Open ... open index. dpath is data directory,
 func Open(dpath string, opts ...Option) (*Indexer, error) {
 	mergeOpt(&Opt, opts...)
 	//mergeOpt(&Opt, RootDir(dpath))
@@ -71,13 +73,14 @@ func Open(dpath string, opts ...Option) (*Indexer, error) {
 	return idx, nil
 }
 
+// Regist ... indexing specified table , col (column)
 func (idx *Indexer) Regist(table, col string) error {
 
 	if len(table) == 0 || table[0] == '.' {
 		return ErrInvalidTableName
 	}
 
-	flist, err := idx.OpenFileList(table)
+	flist, err := idx.openFileList(table)
 	flist.Update()
 	flist.Reload()
 
@@ -89,8 +92,9 @@ func (idx *Indexer) Regist(table, col string) error {
 	return err
 }
 
+// On ... return SearchCond(Search Element) , table is table name, column is set by ReaderColumn("column name")
 func (idx *Indexer) On(table string, opts ...Option) *SearchCond {
-	flist, err := idx.OpenFileList(table)
+	flist, err := idx.openFileList(table)
 	if err != nil {
 		return &SearchCond{idx: idx, Err: err}
 	}
@@ -98,13 +102,13 @@ func (idx *Indexer) On(table string, opts ...Option) *SearchCond {
 	cond := &SearchCond{idx: idx, flist: flist, table: table, column: ""}
 	if len(idx.opt.column) > 0 {
 		opt := &idx.opt
-		cond.StartCol(opt.column)
+		cond.startCol(opt.column)
 	}
 
 	return cond
 }
 
-func (idx *Indexer) OpenFileList(table string) (flist *FileList, err error) {
+func (idx *Indexer) openFileList(table string) (flist *FileList, err error) {
 
 	dir := filepath.Dir(table)
 	tableDir := filepath.Join(idx.Root, dir)
