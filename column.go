@@ -58,6 +58,75 @@ type Record struct {
 
 type Records []*Record
 
+type Decoder struct {
+	FileType  string
+	Decoder   func([]byte, interface{}) error
+	Encoder   func(interface{}) ([]byte, error)
+	Tokenizer func(io.Reader, *File) <-chan *Record
+}
+
+var DefaultDecoder []Decoder = []Decoder{
+	Decoder{
+		FileType: "json",
+		Encoder: func(v interface{}) ([]byte, error) {
+			return json.Marshal(v)
+		},
+		Decoder: func(raw []byte, v interface{}) error {
+			return json.Unmarshal(raw, v)
+		},
+		Tokenizer: func(rio io.Reader, f *File) <-chan *Record {
+			ch := make(chan *Record, 5)
+			go func() {
+				dec := json.NewDecoder(rio)
+
+				var rec *Record
+
+				nest := int(0)
+				for {
+					token, err := dec.Token()
+					if err == io.EOF {
+						break
+					}
+					switch token {
+					case json.Delim('{'):
+						nest++
+						if nest == 1 {
+							rec = &Record{fileID: f.id, offset: dec.InputOffset() - 1}
+						}
+
+					case json.Delim('}'):
+						nest--
+						if nest == 0 {
+							rec.size = dec.InputOffset() - rec.offset
+							ch <- rec
+						}
+					}
+				}
+				close(ch)
+			}()
+			return ch
+		},
+	},
+}
+
+func GetDecoder(fname string) (dec Decoder, e error) {
+	if len(fname) < 1 {
+		return dec, ErrInvalidTableName
+	}
+
+	ext := filepath.Ext(fname)[1:]
+
+	idx, e := loncha.IndexOf(DefaultDecoder, func(i int) bool {
+		return DefaultDecoder[i].FileType == ext
+	})
+	if e != nil {
+		Log(LOG_ERROR, "cannot find %s decoder\n", ext)
+		return dec, e
+	}
+	return DefaultDecoder[idx], nil
+
+}
+
 func NewRecords(n int) Records {
 	return make(Records, 0, n)
 }
@@ -542,9 +611,10 @@ func (r *Record) write(c *Column, w IdxWriter) error {
 	return nil
 }
 
-func (r *Record) parse(raw []byte) {
+func (r *Record) parse(raw []byte, dec Decoder) {
 
-	e := json.Unmarshal(raw, &r.cache)
+	e := dec.Decoder(raw, &r.cache)
+
 	if e != nil {
 		Log(LOG_ERROR, "e=%s Raw='%s' Record=%+v\n", e, strings.ReplaceAll(string(raw), "\n", ""), r.cache)
 		return
@@ -555,7 +625,6 @@ func (r *Record) parse(raw []byte) {
 			r.cache[key] = uint64(f64)
 		}
 	}
-	//Log(LOG_DEBUG, "decode %v \n", r.cache)
 	return
 }
 
@@ -620,7 +689,14 @@ func (r *Record) caching(c *Column) {
 		Log(LOG_WARN, "fail got data r=%+v\n", r)
 		return
 	}
-	r.parse(data)
+	fname, _ := c.Flist.FPath(r.fileID)
+	decoder, e := GetDecoder(fname)
+	if e != nil {
+		Log(LOG_ERROR, "Record.caching():  cannot find %s decoder\n", fname)
+		return
+	}
+
+	r.parse(data, decoder)
 
 }
 
@@ -1066,7 +1142,8 @@ func (s *Searcher) Start(fn func(*Record, uint64) bool) {
 
 }
 
-type SearchResult map[string]interface{}
+type OldSearchResult map[string]interface{}
+type SearchResult string
 
 type KeyRecord struct {
 	key    uint64
@@ -1079,7 +1156,7 @@ type ResultInfoRange struct {
 	end   int
 }
 
-func (info ResultInfoRange) Start() SearchResult {
+func (info ResultInfoRange) Start() OldSearchResult {
 
 	s := info.s
 	recods := info.s.c.cacheToRecords(info.start)
@@ -1089,7 +1166,7 @@ func (info ResultInfoRange) Start() SearchResult {
 	return r.cache
 }
 
-func (info ResultInfoRange) Last() SearchResult {
+func (info ResultInfoRange) Last() OldSearchResult {
 
 	s := info.s
 	records := info.s.c.cacheToRecords(info.end)

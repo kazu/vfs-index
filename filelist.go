@@ -14,8 +14,6 @@ import (
 
 	"github.com/kazu/fbshelper/query/base"
 
-	"encoding/json"
-
 	"github.com/kazu/loncha"
 	query "github.com/kazu/vfs-index/qeury"
 	"github.com/kazu/vfs-index/vfs_schema"
@@ -105,15 +103,20 @@ func (flist *FileList) Update() {
 		return
 	}
 	if len(flist.Files) < 1 {
-		flist.Files = make([]*File, len(infos))
+		flist.Files = make([]*File, 0, len(infos))
 	}
 
 	for i, info := range infos {
-		flist.Files[i] = &File{
+		_, e := GetDecoder(info.Name())
+		if e != nil {
+			Log(LOG_WARN, "FileList.Update(): %s is skip( decoder not found)", info.Name())
+			continue
+		}
+		flist.Files = append(flist.Files, &File{
 			id:       GetInode(info),
 			name:     filepath.Base(info.Name()),
 			index_at: info.ModTime().UnixNano(), // ? ZERO_TIME?
-		}
+		})
 		Log(LOG_DEBUG, "loaded file list %+v from data \n", flist.Files[i])
 	}
 
@@ -262,51 +265,23 @@ func (f *File) Write(l *FileList) error {
 // FIXME: support other format
 func (f *File) Records(dir string) <-chan *Record {
 	ch := make(chan *Record, 5)
-	/*
-		b, _ := ioutil.ReadFile(filepath.Join(dir, f.name))
-		buf := string(b)
-	*/
+
 	rio, e := os.Open(filepath.Join(dir, f.name))
 	if e != nil {
 		close(ch)
 		rio.Close()
 		return ch
 	}
+	ext := filepath.Ext(f.name)
 
-	go func() {
-		dec := json.NewDecoder(rio)
+	dec, err := GetDecoder(f.name)
 
-		var rec *Record
+	if err != nil {
+		Log(LOG_ERROR, "File.Records(): cannot find %s decoder\n", ext)
+		defer close(ch)
+		return ch
+	}
 
-		nest := int(0)
-		for {
-
-			token, err := dec.Token()
-			if err == io.EOF {
-				break
-			}
-			switch token {
-			case json.Delim('{'):
-				nest++
-				if nest == 1 {
-					rec = &Record{fileID: f.id, offset: dec.InputOffset() - 1}
-				}
-
-			case json.Delim('}'):
-				nest--
-				if nest == 0 {
-					rec.size = dec.InputOffset() - rec.offset
-					ch <- rec
-					//Log(LOG_DEBUG, "rec=%+v\n", rec)
-					//Log(LOG_DEBUG, "1: raw='%s'\n", strings.ReplaceAll(buf[rec.offset:rec.offset+rec.size], "\n", " "))
-				}
-			}
-		}
-
-		close(ch)
-		rio.Close()
-	}()
-
-	return ch
+	return dec.Tokenizer(rio, f)
 
 }

@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	vfs "github.com/kazu/vfs-index"
 )
 
@@ -83,6 +82,8 @@ func main() {
 }
 
 func indexing(indexDir, column, table, dir string) {
+	vfs.CurrentLogLoevel = vfs.LOG_WARN
+
 	cur, _ := os.Getwd()
 	opt := vfs.Option{
 		RootDir: filepath.Join(cur, indexDir),
@@ -97,6 +98,7 @@ func indexing(indexDir, column, table, dir string) {
 }
 
 func merge(indexDir, column, table, dir string) {
+	vfs.CurrentLogLoevel = vfs.LOG_WARN
 
 	//vfs.CurrentLogLoevel = vfs.LOG_ERROR
 
@@ -117,6 +119,7 @@ func merge(indexDir, column, table, dir string) {
 }
 
 func search(query, indexDir, column, table, dir string, first bool) {
+	vfs.CurrentLogLoevel = vfs.LOG_WARN
 
 	vfs.CurrentLogLoevel = vfs.LOG_ERROR
 	cur, _ := os.Getwd()
@@ -148,11 +151,11 @@ func search(query, indexDir, column, table, dir string, first bool) {
 
 	if first {
 		result := info.First()
-		fmt.Printf("%v\n", spew.Sdump(result))
+		fmt.Printf("%s\n", result)
 	} else {
 		results := info.All()
 		for _, result := range results {
-			fmt.Printf("%s\n", spew.Sdump(result))
+			fmt.Printf("%s\n", result)
 		}
 	}
 	sCond.CancelAndWait()

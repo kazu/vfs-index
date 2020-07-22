@@ -271,6 +271,9 @@ func (sinfo *SearchInfo) All() (result []SearchResult) {
 	// 		s.c.ctxCancel()
 	// 	}
 	// }()
+	r := sinfo.s.c.cacheToRecords(0)[0]
+	fname, _ := sinfo.s.c.Flist.FPath(r.fileID)
+	decoder, _ := GetDecoder(fname)
 
 	s := sinfo.s
 	for _, info := range sinfo.infos {
@@ -278,7 +281,9 @@ func (sinfo *SearchInfo) All() (result []SearchResult) {
 			for _, r := range s.c.cacheToRecords(cur) {
 				r.caching(s.c)
 				hash := r.cache
-				result = append(result, hash)
+				raw, _ := decoder.Encoder(&hash)
+				result = append(result, SearchResult(raw))
+
 			}
 		}
 	}
@@ -299,7 +304,11 @@ func (sinfo *SearchInfo) First() (result SearchResult) {
 	//key, _ := s.c.keys(cur)
 	r := s.c.cacheToRecords(cur)[0]
 	r.caching(s.c)
-	return r.cache
+	fname, _ := sinfo.s.c.Flist.FPath(r.fileID)
+	decoder, _ := GetDecoder(fname)
+	raw, _ := decoder.Encoder(&r.cache)
+
+	return SearchResult(raw)
 }
 
 func (sinfo *SearchInfo) last() (result SearchResult) {
@@ -317,7 +326,11 @@ func (sinfo *SearchInfo) last() (result SearchResult) {
 	records := s.c.cacheToRecords(cur)
 	r := records[len(records)-1]
 	r.caching(s.c)
-	return r.cache
+	fname, _ := sinfo.s.c.Flist.FPath(r.fileID)
+	decoder, _ := GetDecoder(fname)
+	raw, _ := decoder.Encoder(&r.cache)
+
+	return SearchResult(raw)
 }
 
 func (sinfo *SearchInfo) And(dinfo *SearchInfo) *SearchInfo {
