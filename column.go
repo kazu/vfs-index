@@ -2,6 +2,9 @@ package vfsindex
 
 import (
 	"context"
+
+	//"encoding/csv"
+
 	"encoding/json"
 	"fmt"
 	"io"
@@ -65,14 +68,72 @@ type Decoder struct {
 	Tokenizer func(io.Reader, *File) <-chan *Record
 }
 
+var CsvHeader string
+
 var DefaultDecoder []Decoder = []Decoder{
+	Decoder{
+		FileType: "csv",
+		Encoder: func(v interface{}) ([]byte, error) {
+			return json.Marshal(v)
+		},
+		Decoder: func(raw []byte, v interface{}) error {
+			// header := strings.Split(CsvHeader, ",")
+			// dec, err := csvutil.NewDecoder(bytes.NewReader(raw), header...)
+			// if err != nil {
+			// 	return err
+			// }
+			// dec.Map = func(field, column string, v interface{}) string {
+			// 	if _, ok := v.(float64); ok && field == "n/a" {
+			// 		return "NaN"
+			// 	}
+			// 	return field
+			return nil
+		},
+		Tokenizer: func(rio io.Reader, f *File) <-chan *Record {
+			ch := make(chan *Record, 5)
+
+			go func() {
+				buf, err := ioutil.ReadAll(rio)
+
+				if err != nil {
+					defer close(ch)
+
+				}
+
+				s := string(buf)
+
+				lines := strings.Split(s, "\n")
+				CsvHeader = lines[0]
+				lines = lines[1:]
+				cur := len(CsvHeader) + 1
+				for _, line := range lines {
+					ch <- &Record{fileID: f.id, offset: int64(cur), size: int64(len(line))}
+					cur += len(line) + 1
+				}
+				close(ch)
+			}()
+			return ch
+		},
+	},
 	Decoder{
 		FileType: "json",
 		Encoder: func(v interface{}) ([]byte, error) {
 			return json.Marshal(v)
 		},
 		Decoder: func(raw []byte, v interface{}) error {
-			return json.Unmarshal(raw, v)
+			e := json.Unmarshal(raw, v)
+			if e != nil {
+				return e
+			}
+			if value, ok := v.(*(map[string]interface{})); ok {
+				for key, v := range *value {
+					if f64, ok := v.(float64); ok {
+						(*value)[key] = uint64(f64)
+					}
+				}
+			}
+			return nil
+
 		},
 		Tokenizer: func(rio io.Reader, f *File) <-chan *Record {
 			ch := make(chan *Record, 5)
@@ -141,11 +202,11 @@ func (recs Records) Add(r *Record) Records {
 
 func ColumnPath(tdir, col string, isNum bool) string {
 	if isNum {
-		return filepath.Join(Opt.RootDir, tdir, col+".num.idx")
+		return filepath.Join(Opt.rootDir, tdir, col+".num.idx")
 
 	}
 
-	return filepath.Join(Opt.RootDir, tdir, col+".gram.idx")
+	return filepath.Join(Opt.rootDir, tdir, col+".gram.idx")
 }
 
 func JoinExt(s ...string) string {
@@ -198,7 +259,7 @@ func NewColumn(flist *FileList, table, col string) *Column {
 
 func (c *Column) Update(d time.Duration) error {
 
-	idxDir := filepath.Join(Opt.RootDir, c.Table)
+	idxDir := filepath.Join(Opt.rootDir, c.Table)
 	err := os.MkdirAll(idxDir, os.ModePerm)
 	if err != nil {
 		return err
@@ -620,11 +681,6 @@ func (r *Record) parse(raw []byte, dec Decoder) {
 		return
 	}
 
-	for key, v := range r.cache {
-		if f64, ok := v.(float64); ok {
-			r.cache[key] = uint64(f64)
-		}
-	}
 	return
 }
 

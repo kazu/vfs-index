@@ -85,9 +85,7 @@ func indexing(indexDir, column, table, dir string) {
 	vfs.CurrentLogLoevel = vfs.LOG_WARN
 
 	cur, _ := os.Getwd()
-	opt := vfs.Option{
-		RootDir: filepath.Join(cur, indexDir),
-	}
+	opt := vfs.RootDir(filepath.Join(cur, indexDir))
 	idx, e := vfs.Open(filepath.Join(cur, dir), opt)
 
 	if e != nil {
@@ -103,15 +101,13 @@ func merge(indexDir, column, table, dir string) {
 	//vfs.CurrentLogLoevel = vfs.LOG_ERROR
 
 	cur, _ := os.Getwd()
-	opt := vfs.Option{
-		RootDir: filepath.Join(cur, indexDir),
-	}
+	opt := vfs.RootDir(filepath.Join(cur, indexDir))
 	idx, e := vfs.Open(filepath.Join(cur, dir), opt)
 
 	if e != nil {
 		fmt.Printf("E: Open(%s) fail errpr=%s\n", dir, e)
 	}
-	sCond := idx.On(table, vfs.ReaderOpt{"column": column})
+	sCond := idx.On(table, vfs.ReaderColumn(column))
 	sCond.Searcher()
 	time.Sleep(1 * time.Minute)
 	sCond.CancelAndWait()
@@ -124,10 +120,7 @@ func search(query, indexDir, column, table, dir string, first bool) {
 	vfs.CurrentLogLoevel = vfs.LOG_ERROR
 	cur, _ := os.Getwd()
 
-	opt := vfs.Option{
-		RootDir: filepath.Join(cur, indexDir),
-	}
-	idx, e := vfs.Open(filepath.Join(cur, dir), opt)
+	idx, e := vfs.Open(filepath.Join(cur, dir), vfs.RootDir(filepath.Join(cur, indexDir)))
 	if e != nil {
 		fmt.Printf("E: Open(%s) fail errpr=%s\n", dir, e)
 	}
@@ -136,7 +129,7 @@ func search(query, indexDir, column, table, dir string, first bool) {
 
 	var info *vfs.SearchInfo
 
-	sCond := idx.On(table, vfs.ReaderOpt{"column": column})
+	sCond := idx.On(table, vfs.ReaderColumn(column))
 	if e == nil {
 		info = sCond.Searcher().Select(func(m vfs.Match) bool {
 			v := m.Get(column).(uint64)
@@ -150,10 +143,10 @@ func search(query, indexDir, column, table, dir string, first bool) {
 	}
 
 	if first {
-		result := info.First()
+		result := sCond.ToJsonStr(info.First())
 		fmt.Printf("%s\n", result)
 	} else {
-		results := info.All()
+		results := sCond.ToJsonStrs(info.All())
 		for _, result := range results {
 			fmt.Printf("%s\n", result)
 		}

@@ -12,9 +12,10 @@ import (
 )
 
 func DefaultOption() vfs.Option {
-	return vfs.Option{
-		RootDir: "/Users/xtakei/git/vfs-index/example/vfs",
-	}
+	// return vfs.Option{
+	// 	RootDir: "/Users/xtakei/git/vfs-index/example/vfs",
+	// }
+	return vfs.RootDir("/Users/xtakei/git/vfs-index/example/vfs")
 }
 
 func OpenIndexer() (*vfs.Indexer, error) {
@@ -84,12 +85,13 @@ func Test_SearcherFirst(t *testing.T) {
 
 	idx, e := OpenIndexer()
 
-	sCond := idx.On("test", vfs.ReaderOpt{"column": "id"})
+	sCond := idx.On("test", vfs.ReaderColumn("id"), vfs.Output(vfs.MapInfOutput))
 
-	result := sCond.Searcher().Select(func(m vfs.Match) bool {
+	record := sCond.Searcher().Select(func(m vfs.Match) bool {
 		v := m.Get("id").(uint64)
 		return v < 122878513
 	}).First()
+	result := sCond.ToMapInf(record)
 
 	result_id, ok := result["id"].(uint64)
 	sCond.CancelAndWait()
@@ -106,12 +108,14 @@ func Test_SearcherFindAll(t *testing.T) {
 
 	idx, e := OpenIndexer()
 
-	sCond := idx.On("test", vfs.ReaderOpt{"column": "id"})
+	sCond := idx.On("test", vfs.ReaderColumn("id"), vfs.Output(vfs.MapInfOutput))
 
-	results := sCond.Searcher().Select(func(m vfs.Match) bool {
+	records := sCond.Searcher().Select(func(m vfs.Match) bool {
 		v := m.Get("id").(uint64)
 		return v > 4568788719
 	}).All()
+
+	results := sCond.ToMapInfs(records)
 
 	result_id, ok := results[0]["id"].(uint64)
 
@@ -120,10 +124,11 @@ func Test_SearcherFindAll(t *testing.T) {
 	assert.True(t, 1164 <= len(results))
 	assert.Equal(t, result_id > 4568788719, true, "must bigger 4568788719")
 
-	results = sCond.Searcher().Select(func(m vfs.Match) bool {
+	records = sCond.Searcher().Select(func(m vfs.Match) bool {
 		v := m.Get("id").(uint64)
 		return v < 122878513
 	}).All()
+	results = sCond.ToMapInfs(records)
 
 	result_id, ok = results[0]["id"].(uint64)
 	assert.NoError(t, e)
@@ -140,7 +145,7 @@ func Test_SearchStringAll(t *testing.T) {
 	idx, e := OpenIndexer()
 	sval := vfs.SearchVal("逆突き")
 
-	sCond := idx.On("test", vfs.ReaderOpt{"column": "name"})
+	sCond := idx.On("test", vfs.ReaderColumn("name"), vfs.Output(vfs.MapInfOutput))
 
 	info := sCond.Searcher().Select(func(m vfs.Match) bool {
 		return m.Uint64("name") <= sval
@@ -167,7 +172,7 @@ func Test_SearchSmallString(t *testing.T) {
 	vfs.CurrentLogLoevel = vfs.LOG_WARN
 	idx, e := OpenIndexer()
 
-	sCond := idx.On("test", vfs.ReaderOpt{"column": "name"})
+	sCond := idx.On("test", vfs.ReaderColumn("name"), vfs.Output(vfs.MapInfOutput))
 	matches := sCond.Searcher().Match("無門").All()
 
 	assert.NoError(t, e)

@@ -261,28 +261,71 @@ func (sinfo *SearchInfo) bsearch(fn func(Match) bool) (info InfoRange) {
 
 }
 
-func (sinfo *SearchInfo) All() (result []SearchResult) {
+func (s *SearchCond) ToMapInf(r *Record) map[string]interface{} {
 
-	result = []SearchResult{}
+	r.caching(s.idxCol)
+	return r.cache
+}
 
-	// defer func() {
-	// 	s := sinfo.s
-	// 	if s.c.ctx != nil {
-	// 		s.c.ctxCancel()
-	// 	}
-	// }()
-	r := sinfo.s.c.cacheToRecords(0)[0]
-	fname, _ := sinfo.s.c.Flist.FPath(r.fileID)
-	decoder, _ := GetDecoder(fname)
+func (s *SearchCond) ToJsonStr(r *Record) string {
+
+	c := s.idxCol
+
+	r.caching(s.idxCol)
+	fname, _ := c.Flist.FPath(r.fileID)
+	encoder, _ := GetDecoder(fname)
+
+	raw, _ := encoder.Encoder(c.cache)
+
+	return string(raw)
+}
+
+func (s *SearchCond) ToJsonStrs(rlist []*Record) (result []string) {
+
+	c := s.idxCol
+	r := rlist[0]
+	r.caching(s.idxCol)
+	fname, _ := c.Flist.FPath(r.fileID)
+	enc, _ := GetDecoder(fname)
+
+	for _, r := range rlist {
+		r.caching(s.idxCol)
+		raw, _ := enc.Encoder(r.cache)
+		result = append(result, string(raw))
+	}
+	return
+
+}
+
+func (s *SearchCond) ToMapInfs(rlist []*Record) (result []map[string]interface{}) {
+
+	for _, r := range rlist {
+		r.caching(s.idxCol)
+		result = append(result, r.cache)
+	}
+	return
+}
+
+func (sinfo *SearchInfo) All() (result []*Record) {
+
+	result = []*Record{}
+
+	// // defer func() {
+	// // 	s := sinfo.s
+	// // 	if s.c.ctx != nil {
+	// // 		s.c.ctxCancel()
+	// // 	}
+	// // }()
+	// r := sinfo.s.c.cacheToRecords(0)[0]
+	// fname, _ := sinfo.s.c.Flist.FPath(r.fileID)
+	// decoder, _ := GetDecoder(fname)
 
 	s := sinfo.s
 	for _, info := range sinfo.infos {
 		for cur := info.start; cur <= info.end; cur++ {
 			for _, r := range s.c.cacheToRecords(cur) {
-				r.caching(s.c)
-				hash := r.cache
-				raw, _ := decoder.Encoder(&hash)
-				result = append(result, SearchResult(raw))
+				//r.caching(s.c)
+				result = append(result, r)
 
 			}
 		}
@@ -290,28 +333,17 @@ func (sinfo *SearchInfo) All() (result []SearchResult) {
 	return
 }
 
-func (sinfo *SearchInfo) First() (result SearchResult) {
-
-	// defer func() {
-	// 	s := sinfo.s
-	// 	if s.c.ctx != nil {
-	// 		s.c.ctxCancel()
-	// 	}
-	// }()
+func (sinfo *SearchInfo) First() (result *Record) {
 
 	s := sinfo.s
 	cur := sinfo.infos[0].start
-	//key, _ := s.c.keys(cur)
 	r := s.c.cacheToRecords(cur)[0]
-	r.caching(s.c)
-	fname, _ := sinfo.s.c.Flist.FPath(r.fileID)
-	decoder, _ := GetDecoder(fname)
-	raw, _ := decoder.Encoder(&r.cache)
+	//r.caching(s.c)
 
-	return SearchResult(raw)
+	return r
 }
 
-func (sinfo *SearchInfo) last() (result SearchResult) {
+func (sinfo *SearchInfo) last() (result *Record) {
 
 	// defer func() {
 	// 	s := sinfo.s
@@ -325,12 +357,9 @@ func (sinfo *SearchInfo) last() (result SearchResult) {
 	//key, _ := s.c.keys(cur)
 	records := s.c.cacheToRecords(cur)
 	r := records[len(records)-1]
-	r.caching(s.c)
-	fname, _ := sinfo.s.c.Flist.FPath(r.fileID)
-	decoder, _ := GetDecoder(fname)
-	raw, _ := decoder.Encoder(&r.cache)
+	//r.caching(s.c)
 
-	return SearchResult(raw)
+	return r
 }
 
 func (sinfo *SearchInfo) And(dinfo *SearchInfo) *SearchInfo {

@@ -55,6 +55,7 @@ func Log(l LogLevel, f string, args ...interface{}) {
 type Indexer struct {
 	Root string
 	Cols map[string]*Column
+	opt  optionState
 }
 
 func TrimFilePathSuffix(path string) string {
@@ -62,8 +63,10 @@ func TrimFilePathSuffix(path string) string {
 	return path[0 : len(path)-len(filepath.Ext(path))]
 
 }
-func Open(dpath string, opt Option) (*Indexer, error) {
-	Opt = opt
+func Open(dpath string, opts ...Option) (*Indexer, error) {
+	mergeOpt(&Opt, opts...)
+	//mergeOpt(&Opt, RootDir(dpath))
+
 	idx := &Indexer{Root: dpath, Cols: make(map[string]*Column)}
 	return idx, nil
 }
@@ -86,17 +89,16 @@ func (idx *Indexer) Regist(table, col string) error {
 	return err
 }
 
-type ReaderOpt map[string]string
-
-func (idx *Indexer) On(table string, opt ReaderOpt) *SearchCond {
+func (idx *Indexer) On(table string, opts ...Option) *SearchCond {
 	flist, err := idx.OpenFileList(table)
 	if err != nil {
 		return &SearchCond{idx: idx, Err: err}
 	}
+	mergeOpt(&idx.opt, opts...)
 	cond := &SearchCond{idx: idx, flist: flist, table: table, column: ""}
-	if opt != nil && len(opt["column"]) > 0 {
-		//cond.column = opt["column"]
-		cond.StartCol(opt["column"])
+	if len(idx.opt.column) > 0 {
+		opt := &idx.opt
+		cond.StartCol(opt.column)
 	}
 
 	return cond

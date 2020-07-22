@@ -70,7 +70,7 @@ func GetInode(info os.FileInfo) uint64 {
 
 func FileListPath(tabledir string) string {
 
-	return filepath.Join(Opt.RootDir, filepath.Base(tabledir), "files.idx")
+	return filepath.Join(Opt.rootDir, filepath.Base(tabledir), "files.idx")
 }
 
 func FileListPathWithAdding(tabledir string, s, e uint64, usePid bool) string {
