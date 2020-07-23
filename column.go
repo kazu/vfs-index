@@ -18,7 +18,6 @@ import (
 
 	query "github.com/kazu/vfs-index/qeury"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/kazu/loncha"
 	"github.com/kazu/vfs-index/vfs_schema"
 	"github.com/schollz/progressbar/v3"
@@ -658,7 +657,7 @@ func (r *Record) write(c *Column, w IdxWriter) error {
 		io.Close()
 		Log(LOG_DEBUG, "S: written %s \n", wPath)
 		if w.IsNum && r.Uint64Value(c) == 0 {
-			spew.Dump(r)
+			//spew.Dump(r)
 		}
 
 		e = SafeRename(wPath, path)
