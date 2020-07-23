@@ -136,17 +136,6 @@ func search(query, indexDir, column, table, dir string, first bool) {
 
 	sCond := idx.On(table, vfs.ReaderColumn(column))
 	info = sCond.Searcher().Query(query)
-	// if e == nil {
-	// 	info = sCond.Searcher().Select(func(m vfs.Match) bool {
-	// 		v := m.Get(column).(uint64)
-	// 		return v <= ival
-	// 	}).Select(func(m vfs.Match) bool {
-	// 		v := m.Get(column).(uint64)
-	// 		return v >= ival
-	// 	})
-	// } else {
-	// 	info = sCond.Searcher().Match(query)
-	// }
 
 	if first {
 		result := sCond.ToJsonStr(info.First())

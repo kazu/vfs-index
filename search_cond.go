@@ -88,7 +88,11 @@ func (m Match) Op(col, op, v string) bool {
 		return false
 	}
 	return matchOps[op](sv, dv)
+}
 
+func (m Match) opByUint64(col, op string, dv uint64) bool {
+	sv := m.Uint64(col)
+	return matchOps[op](sv, dv)
 }
 
 // SearchVal ... convert tri-utf8 to uint64 ( mb4 not supported)
@@ -471,6 +475,15 @@ func (sinfo *SearchInfo) smallerMatch(s string) *SearchInfo {
 
 }
 
+/* Query .. Search by query string
+
+to search by number. (id is column/attribute name)
+  "id == 1234"
+  "id <= 2234"
+to search string (exp. name is attribute name)
+   "name.search(hogehoge)"
+
+*/
 func (sinfo *SearchInfo) Query(s string) *SearchInfo {
 	q, err := expr.GetExpr(s)
 
@@ -487,11 +500,25 @@ func (sinfo *SearchInfo) Query(s string) *SearchInfo {
 	if sinfo.s.c.Name == q.Column && !sinfo.s.c.IsNum {
 		return sinfo.Match(q.Value)
 	}
-
+	if q.Op == "==" {
+		return sinfo.Select(func(m Match) bool {
+			return m.Op(q.Column, ">=", q.Value)
+		}).Select(func(m Match) bool {
+			return m.Op(q.Column, "==", q.Value)
+		})
+	}
 	return sinfo.Select(func(m Match) bool {
 		return m.Op(q.Column, q.Op, q.Value)
 	})
+}
 
+func (sinfo *SearchInfo) FindByKey(k uint64) *SearchInfo {
+	col := sinfo.s.c.Name
+	return sinfo.Select(func(m Match) bool {
+		return m.opByUint64(col, ">=", k)
+	}).Select(func(m Match) bool {
+		return m.opByUint64(col, "==", k)
+	})
 }
 
 // Match ... set condition for string match
