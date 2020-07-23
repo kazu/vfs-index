@@ -360,7 +360,7 @@ func (c *Column) WriteDirties() {
 		return c.Dirties[i] == nil
 	})
 	d := time.Now().Sub(s)
-	Log(LOG_WARN, "write dirty elapsed %s\n", d)
+	Log(LOG_WARN, "WriteDiries() elapsed %s %d\n", d, len(c.Dirties))
 }
 
 func (c *Column) cancelAndWait() {
@@ -718,16 +718,20 @@ func (r *Record) write(c *Column, w IdxWriter) error {
 		path = fmt.Sprintf("%s.%010x.%010x", path, r.fileID, r.offset)
 
 		//Log(LOG_DEBUG, "path=%s %s \n", wPath, c.TableDir(), c)
-		os.MkdirAll(filepath.Dir(path), os.ModePerm)
+		if FileExist(path) {
+			//Log(LOG_WARN, "F: skip create %s. %s is already exists \n", wPath, path)
+			continue
+		}
 		io, e := os.Create(wPath)
 		if e != nil {
-			Log(LOG_WARN, "F: open... %s\n", wPath)
+			Log(LOG_WARN, "F: create...%s err=%s\n", wPath, e)
 			return e
 		}
 		io.Write(r.ToFbs(r.Uint64Value(c)))
 
 		io.Close()
 		Log(LOG_DEBUG, "S: written %s \n", wPath)
+		os.MkdirAll(filepath.Dir(path), os.ModePerm)
 		if w.IsNum && r.Uint64Value(c) == 0 {
 			//spew.Dump(r)
 		}

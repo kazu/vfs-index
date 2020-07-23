@@ -89,7 +89,7 @@ func indexing(indexDir, column, table, dir string) {
 
 	cur, _ := os.Getwd()
 	opt := vfs.RootDir(filepath.Join(cur, indexDir))
-	idx, e := vfs.Open(filepath.Join(cur, dir), opt, vfs.RegitConcurrent(16))
+	idx, e := vfs.Open(filepath.Join(cur, dir), opt, vfs.RegitConcurrent(8))
 
 	if e != nil {
 		fmt.Printf("E: Open(%s) fail errpr=%s\n", dir, e)
