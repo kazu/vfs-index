@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"time"
 
 	vfs "github.com/kazu/vfs-index"
+	"github.com/kazu/vfs-index/expr"
 )
 
 const Usage string = `
@@ -120,27 +120,33 @@ func search(query, indexDir, column, table, dir string, first bool) {
 	vfs.CurrentLogLoevel = vfs.LOG_ERROR
 	cur, _ := os.Getwd()
 
+	q, _ := expr.GetExpr(query)
+	if len(q.Column) > 0 {
+		column = q.Column
+	}
+
 	idx, e := vfs.Open(filepath.Join(cur, dir), vfs.RootDir(filepath.Join(cur, indexDir)))
 	if e != nil {
 		fmt.Printf("E: Open(%s) fail errpr=%s\n", dir, e)
 	}
 
-	ival, e := strconv.ParseUint(query, 10, 64)
+	//ival, e := strconv.ParseUint(query, 10, 64)
 
 	var info *vfs.SearchInfo
 
 	sCond := idx.On(table, vfs.ReaderColumn(column))
-	if e == nil {
-		info = sCond.Searcher().Select(func(m vfs.Match) bool {
-			v := m.Get(column).(uint64)
-			return v <= ival
-		}).Select(func(m vfs.Match) bool {
-			v := m.Get(column).(uint64)
-			return v >= ival
-		})
-	} else {
-		info = sCond.Searcher().Match(query)
-	}
+	info = sCond.Searcher().Query(query)
+	// if e == nil {
+	// 	info = sCond.Searcher().Select(func(m vfs.Match) bool {
+	// 		v := m.Get(column).(uint64)
+	// 		return v <= ival
+	// 	}).Select(func(m vfs.Match) bool {
+	// 		v := m.Get(column).(uint64)
+	// 		return v >= ival
+	// 	})
+	// } else {
+	// 	info = sCond.Searcher().Match(query)
+	// }
 
 	if first {
 		result := sCond.ToJsonStr(info.First())

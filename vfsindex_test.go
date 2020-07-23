@@ -8,6 +8,7 @@ import (
 	"go/types"
 
 	vfs "github.com/kazu/vfs-index"
+	"github.com/kazu/vfs-index/expr"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -179,6 +180,41 @@ func Test_SearchSmallString(t *testing.T) {
 	assert.True(t, 0 < len(matches))
 	sCond.CancelAndWait()
 }
+
+func Test_SearchQueryt(t *testing.T) {
+	vfs.CurrentLogLoevel = vfs.LOG_WARN
+	idx, e := OpenIndexer()
+	qstr := "id == 130988471"
+	q, _ := expr.GetExpr(qstr)
+
+	sCond := idx.On("test", vfs.ReaderColumn(q.Column), vfs.Output(vfs.MapInfOutput))
+	matches := sCond.Searcher().Query(qstr).All()
+	results := sCond.ToMapInfs(matches)
+
+	expected := interface{}(uint64(130988471))
+	assert.NoError(t, e)
+	assert.True(t, 0 < len(results))
+	assert.Equal(t, expected, results[0]["id"])
+	sCond.CancelAndWait()
+}
+
+func Test_SearchQueryString(t *testing.T) {
+	vfs.CurrentLogLoevel = vfs.LOG_WARN
+	idx, e := OpenIndexer()
+	qstr := `name.search("ロシア")`
+	q, _ := expr.GetExpr(qstr)
+
+	sCond := idx.On("test", vfs.ReaderColumn(q.Column), vfs.Output(vfs.MapInfOutput))
+	matches := sCond.Searcher().Query(qstr).All()
+	results := sCond.ToMapInfs(matches)
+
+	//expected := interface{}(uint64(130988471))
+	assert.NoError(t, e)
+	assert.True(t, 0 < len(results))
+	//assert.Equal(t, expected, results[0]["id"])
+	sCond.CancelAndWait()
+}
+
 func TestSize(t *testing.T) {
 	//	assert.Equal(t, len(int64), 8)
 	a := types.Config{}

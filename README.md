@@ -38,11 +38,18 @@ $
 search data 
 
 ```
-$ vfs-index search  -q="2011_04" --index=../idx --column=name --table=test --data=./
+$ vfs-index search  -q='name.search("2011_04")' --index=../idx --column=name --table=test --data=./
 {"id":130988433,"name":"2011_04_24-1.m4v"}
 {"id":130988434,"name":"2011_04_24-2.mp4"}
 {"id":130988435,"name":"2011_04_24-3.mp4"}
 index merging done [==============================================================] 67507 / 67507
+```
+
+search by number attributes/field 
+
+```
+$ vfs-index search  -q='id == 130988433' --index=../idx --column=name --table=test --data=./
+{"id":130988433,"name":"2011_04_24-1.m4v"}
 ```
 
 merge index
@@ -50,6 +57,20 @@ merge index
 ```
 $ vfs-index merge --index=../idx --column=name --table=test --data=./
 index merging done [==============================================================] 67507 / 67507
+```
+
+## support query.
+
+if attribute/field is  number, can select by Arithmetic comparison.
+support comparation ops. == >= < <= > .
+
+```
+$ vfs-index search -q='id == 130988471' --index=../idx --table=test --data=./
+```
+
+string search 
+```
+$ vfs-index search -q='name.search("フロンターレ")' --index=../idx --table=test --data=./
 ```
 
 

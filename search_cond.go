@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/kazu/loncha"
+	"github.com/kazu/vfs-index/expr"
 	query "github.com/kazu/vfs-index/qeury"
 )
 
@@ -67,6 +68,27 @@ func (m Match) Uint64(k string) uint64 {
 	m.rec.record.caching(m.s.c)
 
 	return m.rec.record.cache[k].(uint64)
+}
+
+type MatchOps map[string]func(uint64, uint64) bool
+
+var matchOps MatchOps = MatchOps{
+	"==": func(s, d uint64) bool { return s == d },
+	"<=": func(s, d uint64) bool { return s <= d },
+	"<":  func(s, d uint64) bool { return s < d },
+	">=": func(s, d uint64) bool { return s >= d },
+	">":  func(s, d uint64) bool { return s > d },
+}
+
+func (m Match) Op(col, op, v string) bool {
+
+	sv := m.Uint64(col)
+	dv, err := strconv.ParseUint(v, 10, 64)
+	if err != nil {
+		return false
+	}
+	return matchOps[op](sv, dv)
+
 }
 
 // SearchVal ... convert tri-utf8 to uint64 ( mb4 not supported)
@@ -327,6 +349,28 @@ func (sinfo *SearchInfo) All() (result []*Record) {
 	return
 }
 
+// Keys ... return keys of all result
+func (sinfo *SearchInfo) Keys() (result []uint64) {
+
+	s := sinfo.s
+	for _, info := range sinfo.infos {
+		for cur := info.start; cur <= info.end; cur++ {
+			fKey, lKey := s.c.keys(cur)
+			result = append(result, fKey)
+			if fKey != lKey {
+				result = append(result, lKey)
+			}
+		}
+	}
+	return
+}
+
+// FIXME
+// func (sinfo *SearchInfo) Limit(n int) (result *SearchInfo) {
+// 	result = sinfo.Copy()
+// 	result.befores = sinfo.infos
+// }
+
 // First ... return first match Record
 func (sinfo *SearchInfo) First() (result *Record) {
 
@@ -410,19 +454,42 @@ func (sinfo *SearchInfo) smallerMatch(s string) *SearchInfo {
 	for i := 0; i < 3; i++ {
 		if i < len([]rune(s)) {
 			fmt.Fprintf(&b, "%04x", runes[i])
-			fmt.Fprintf(&n, "%04x", runes[i]+1)
+			fmt.Fprintf(&n, "%04x", runes[i])
 			continue
 		}
 		fmt.Fprintf(&b, "%04x", 0)
-		fmt.Fprintf(&n, "%04x", 0)
+		fmt.Fprintf(&n, "ffff")
 	}
 	sval, _ := strconv.ParseUint(b.String(), 16, 64)
 	nval, _ := strconv.ParseUint(n.String(), 16, 64)
 
 	return sinfo.Copy().Select(func(m Match) bool {
-		return m.Uint64(sinfo.s.c.Name) < nval
+		return m.Uint64(sinfo.s.c.Name) <= nval
 	}).Select(func(m Match) bool {
 		return m.Uint64(sinfo.s.c.Name) > sval
+	})
+
+}
+
+func (sinfo *SearchInfo) Query(s string) *SearchInfo {
+	q, err := expr.GetExpr(s)
+
+	if err != nil {
+		return sinfo.Select(func(m Match) bool {
+			return false
+		})
+	}
+
+	if q.Op == "search" && sinfo.s.c.Name == q.Column && !sinfo.s.c.IsNum {
+		return sinfo.Match(q.Value)
+	}
+
+	if sinfo.s.c.Name == q.Column && !sinfo.s.c.IsNum {
+		return sinfo.Match(q.Value)
+	}
+
+	return sinfo.Select(func(m Match) bool {
+		return m.Op(q.Column, q.Op, q.Value)
 	})
 
 }
