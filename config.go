@@ -7,6 +7,7 @@ type optionState struct {
 	output           Outputer
 	rootDir          string
 	idxMergeOnSearch bool
+	cntConcurrent    int
 }
 
 //type ReaderOpt map[string]string
@@ -51,5 +52,11 @@ func Output(t Outputer) Option {
 func MergeOnSearch(enable bool) Option {
 	return func(opt *optionState) {
 		opt.idxMergeOnSearch = enable
+	}
+}
+
+func RegitConcurrent(n int) Option {
+	return func(opt *optionState) {
+		opt.cntConcurrent = n
 	}
 }

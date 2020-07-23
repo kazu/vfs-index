@@ -215,6 +215,28 @@ func JoinExt(s ...string) string {
 
 }
 
+func AddingDir(s string, n int) string {
+
+	if s == "*" {
+		//return "**/"
+		return "*/*/*/"
+	}
+
+	if n < 1 {
+		n = 2
+	}
+	var b strings.Builder
+	for i := 0; i < len(s); i += n {
+		if len(s[i:]) < n {
+			b.WriteString(s[i:])
+		} else {
+			b.WriteString(s[i : i+n])
+		}
+		b.WriteString("/")
+	}
+	return b.String()
+}
+
 func ColumnPathWithStatus(tdir, col string, isNum bool, s, e string, status byte) string {
 	if status == RECORD_WRITING {
 
@@ -228,7 +250,7 @@ func ColumnPathWithStatus(tdir, col string, isNum bool, s, e string, status byte
 		return fmt.Sprintf("%s.adding.%d.%s-%s", ColumnPath(tdir, col, isNum), os.Getgid(), s, e)
 	case RECORD_WRITTEN:
 		// <column name>.<index type>.<start>-<end>.<inode number>.<offset>
-		return fmt.Sprintf("%s.%s-%s", ColumnPath(tdir, col, isNum), s, e)
+		return fmt.Sprintf("%s.%s-%s", ColumnPath(tdir+"/"+AddingDir(s, 4), col, isNum), s, e)
 
 	case RECORD_MERGING:
 		return fmt.Sprintf("%s.merging.%d.%s-%s", ColumnPath(tdir, col, isNum), os.Getgid(), s, e)
@@ -294,23 +316,50 @@ func (c *Column) updateFile(f *File) {
 }
 
 func (c *Column) WriteDirties() {
-	// if CurrentLogLoevel < LOG_DEBUG {
-	// 	fmt.Fprint(os.Stderr, "writing index...")
-	// }
-	bar := progressbar.Default(int64(len(c.Dirties)))
-
-	for _, r := range c.Dirties {
-		if r.Write(c) == nil {
-			loncha.Delete(c.Dirties, func(i int) bool {
-				return c.Dirties[i].fileID == r.fileID &&
-					c.Dirties[i].offset == r.offset
-			})
-		}
-		bar.Add(1)
+	if Opt.cntConcurrent < 1 {
+		Opt.cntConcurrent = 1
 	}
-	// if CurrentLogLoevel < LOG_DEBUG {
-	// 	fmt.Fprint(os.Stderr, "done\n")
-	// }
+	s := time.Now()
+	Log(LOG_WARN, "Indexing %d concurrent\n", Opt.cntConcurrent)
+	ch := make(chan int, len(c.Dirties))
+	chDone := make(chan bool, Opt.cntConcurrent)
+
+	bar := progressbar.Default(int64(len(c.Dirties)))
+	writeRecord := func(ch chan int) {
+		for {
+			i, ok := <-ch
+			if !ok || i < 0 {
+				break
+			}
+			r := c.Dirties[i]
+			e := r.Write(c)
+			if e == nil {
+				c.Dirties[i] = nil
+				bar.Add(1)
+			}
+		}
+		chDone <- true
+	}
+	for i := 0; i < Opt.cntConcurrent; i++ {
+		go writeRecord(ch)
+	}
+	go func() {
+		for i := range c.Dirties {
+			ch <- i
+		}
+		for i := 0; i < Opt.cntConcurrent; i++ {
+			ch <- -1
+		}
+	}()
+
+	for i := 0; i < Opt.cntConcurrent; i++ {
+		<-chDone
+	}
+	loncha.Delete(&c.Dirties, func(i int) bool {
+		return c.Dirties[i] == nil
+	})
+	d := time.Now().Sub(s)
+	Log(LOG_WARN, "write dirty elapsed %s\n", d)
 }
 
 func (c *Column) cancelAndWait() {
@@ -380,7 +429,7 @@ func (c *Column) noMergedFPath() (idxfiles []string, err error) {
 
 	idxfiles, err = filepath.Glob(pat)
 	if err != nil || len(idxfiles) == 0 {
-		Log(LOG_WARN, "column.cachingTri(): %s is not found\n", pat)
+		Log(LOG_WARN, "column.noMergedFPath(): %s num=%v is not found\n", pat, c.IsNum)
 		err = ErrNotFoundFile
 	}
 	return
@@ -457,10 +506,18 @@ func (c *Column) IsNumViaIndex() bool {
 
 	path := ColumnPath(c.TableDir(), c.Name, true)
 	pat := fmt.Sprintf("%s*", path)
-	Log(LOG_WARN, "find %s files\n", pat)
+	Log(LOG_WARN, "finding %s files\n", pat)
 	idxfiles, err := filepath.Glob(pat)
 	if err != nil || len(idxfiles) == 0 {
-		return false
+		path = ColumnPath(c.TableDir()+"/"+AddingDir("*", 4), c.Name, true)
+		pat = fmt.Sprintf("%s*", path)
+		Log(LOG_WARN, "finding %s files\n", pat)
+		idxfiles, err = filepath.Glob(pat)
+		if err != nil || len(idxfiles) == 0 {
+			Log(LOG_WARN, "not found %s files\n", pat)
+			return false
+		}
+		Log(LOG_WARN, "found %s files\n", pat)
 	}
 	return true
 }
@@ -474,7 +531,10 @@ func (c *Column) loadIndex() error {
 	pat := fmt.Sprintf("%s", path)
 	idxfiles, err := filepath.Glob(pat)
 	if err != nil || len(idxfiles) == 0 {
-		Log(LOG_WARN, "loadIndex() %s is not found. force creation\n", pat)
+		Log(LOG_WARN, "loadIndex() %s is not found. force creation ctx=%v\n", pat, c.ctx)
+		if c.ctx == nil {
+			c.ctx, c.ctxCancel = context.WithTimeout(context.Background(), 1*time.Minute)
+		}
 		go c.MergingIndex(c.ctx)
 		return ErrNotFoundFile
 	}
@@ -658,6 +718,7 @@ func (r *Record) write(c *Column, w IdxWriter) error {
 		path = fmt.Sprintf("%s.%010x.%010x", path, r.fileID, r.offset)
 
 		//Log(LOG_DEBUG, "path=%s %s \n", wPath, c.TableDir(), c)
+		os.MkdirAll(filepath.Dir(path), os.ModePerm)
 		io, e := os.Create(wPath)
 		if e != nil {
 			Log(LOG_WARN, "F: open... %s\n", wPath)
@@ -855,14 +916,16 @@ func (c *Column) caching() (e error) {
 	// if e == nil {
 	// 	return
 	// }
-	e = c.cachingNum()
 
-	if e != nil {
-		c.IsNum = false
+	if c.IsNumViaIndex() {
+		c.IsNum = true
+	}
+	if c.IsNum {
+		e = c.cachingNum()
+	} else {
 		e = c.cachingTri()
 		return
 	}
-	c.IsNum = true
 	return
 }
 func (c *Column) cachingTri() (e error) {
