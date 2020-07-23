@@ -103,6 +103,7 @@ func (idx *Indexer) On(table string, opts ...Option) *SearchCond {
 	if len(idx.opt.column) > 0 {
 		opt := &idx.opt
 		cond.startCol(opt.column)
+		cond.idxCol.isMergeOnSearch = opt.idxMergeOnSearch
 	}
 
 	return cond

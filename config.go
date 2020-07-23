@@ -3,9 +3,10 @@ package vfsindex
 var Opt optionState
 
 type optionState struct {
-	column  string
-	output  Outputer
-	rootDir string
+	column           string
+	output           Outputer
+	rootDir          string
+	idxMergeOnSearch bool
 }
 
 //type ReaderOpt map[string]string
@@ -43,5 +44,12 @@ const (
 func Output(t Outputer) Option {
 	return func(opt *optionState) {
 		opt.output = t
+	}
+}
+
+// MergeOnSearch ... enable to merge index on search
+func MergeOnSearch(enable bool) Option {
+	return func(opt *optionState) {
+		opt.idxMergeOnSearch = enable
 	}
 }

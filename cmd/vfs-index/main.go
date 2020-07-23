@@ -18,7 +18,7 @@ vfs-index
   subcmd 
 	index		index data
 	search		search data
-	merge       merge index (only 1 minute)
+	merge		merge index (only 1 minute)
 
   Flags:
 	-index  	directory for index data
@@ -26,8 +26,10 @@ vfs-index
 	-column		column name for index  
 	-table		table name for index. prefix name in data file
 	-data		data directory
-	-q			search query
-
+	-q		search query 
+				example)  
+					string search: 		'name.search("foobar")'
+					numeric condition:	'id == 23456'
 `
 
 func main() {
@@ -51,7 +53,7 @@ func main() {
 		//flag.Parse(os.Args[:2])
 	}
 	var indexDir, column, table, dir, query string
-	var first, help bool
+	var first, help, nomerge bool
 	flagCmd.StringVar(&indexDir, "index", "./vfs", "directory of index")
 	flagCmd.StringVar(&column, "column", "id", "column name")
 	flagCmd.StringVar(&table, "table", "table", "table name")
@@ -59,6 +61,7 @@ func main() {
 	flagCmd.StringVar(&query, "q", "", "search query")
 	flagCmd.BoolVar(&first, "f", false, "only output one record")
 	flagCmd.BoolVar(&help, "h", false, "help")
+	flagCmd.BoolVar(&nomerge, "nomerge", false, "not merge index on search")
 
 	flagCmd.Parse(os.Args[2:])
 
@@ -73,7 +76,7 @@ func main() {
 	case "index":
 		indexing(indexDir, column, table, dir)
 	case "search":
-		search(query, indexDir, column, table, dir, first)
+		search(query, indexDir, column, table, dir, first, nomerge)
 	case "merge":
 		merge(indexDir, column, table, dir)
 	}
@@ -114,7 +117,7 @@ func merge(indexDir, column, table, dir string) {
 
 }
 
-func search(query, indexDir, column, table, dir string, first bool) {
+func search(query, indexDir, column, table, dir string, first, nomerge bool) {
 	vfs.CurrentLogLoevel = vfs.LOG_WARN
 
 	vfs.CurrentLogLoevel = vfs.LOG_ERROR
@@ -134,7 +137,7 @@ func search(query, indexDir, column, table, dir string, first bool) {
 
 	var info *vfs.SearchInfo
 
-	sCond := idx.On(table, vfs.ReaderColumn(column))
+	sCond := idx.On(table, vfs.ReaderColumn(column), vfs.MergeOnSearch(!nomerge))
 	info = sCond.Searcher().Query(query)
 
 	if first {

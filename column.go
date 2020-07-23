@@ -47,9 +47,10 @@ type Column struct {
 
 	cache *IdxCaches
 
-	ctx       context.Context
-	ctxCancel context.CancelFunc
-	done      chan bool
+	ctx             context.Context
+	ctxCancel       context.CancelFunc
+	done            chan bool
+	isMergeOnSearch bool
 }
 
 type Record struct {
@@ -1031,6 +1032,27 @@ func (c *IdxCaches) head(n int) uint64 {
 	return 0
 }
 
+// func (c *Column) cntOfValue(info *InfoRange) int {
+// 	// if c.cache.countInInfos() <= n {
+// 	// 	return int(c.cache.caches[n-c.cache.countInInfos()].FirstEnd.last + 1 - c.cache.caches[n-c.cache.countInInfos()].FirstEnd.first)
+// 	// }
+
+// 	if info.end <= c.cache.countInInfos() {
+// 		return c.cntOfValueOnMerged(info)
+// 	} else if info.start > c.cache.countInInfos() {
+// 		return info.end - info.start
+// 	}
+
+// 	return c.cntOfValue(&InfoRange{start: info.start, end: c.cache.countInInfos() - 1}) +
+// 		info.end - c.cache.countInInfos()
+// }
+
+// func (c *Column) cntOfValueOnMerged(info *InfoRange) int {
+
+// 	return 0
+
+// }
+
 func (c *Column) cRecordlist(n int) (records *query.RecordList) {
 	if c.cache.countInInfos() <= n {
 		i := n - c.cache.countInInfos()
@@ -1139,7 +1161,7 @@ func (c *Column) Searcher() *Searcher {
 	if c.cache.countOfKeys() == 0 || len(c.cache.caches) == 0 {
 		c.ctx, c.ctxCancel = context.WithTimeout(context.Background(), 1*time.Minute)
 		c.caching()
-	} else if c.ctx == nil {
+	} else if c.ctx == nil && c.isMergeOnSearch {
 		c.ctx, c.ctxCancel = context.WithTimeout(context.Background(), 1*time.Minute)
 		go c.MergingIndex(c.ctx)
 		time.Sleep(200 * time.Millisecond)
