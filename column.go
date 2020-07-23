@@ -2,6 +2,7 @@ package vfsindex
 
 import (
 	"context"
+	"regexp"
 
 	//"encoding/csv"
 
@@ -423,28 +424,18 @@ func (r *Record) Write(c *Column) error {
 
 }
 
-func (c *Column) noMergedFPath() (idxfiles []string, err error) {
+func (c *Column) noMergedFPath() (idxfiles <-chan string, err error) {
 	path := ColumnPathWithStatus(c.TableDir(), c.Name, c.IsNum, "*", "*", RECORD_WRITTEN)
 	pat := fmt.Sprintf("%s.*.*", path)
 
-	idxfiles, err = filepath.Glob(pat)
-	if err != nil || len(idxfiles) == 0 {
-		Log(LOG_WARN, "column.noMergedFPath(): %s num=%v is not found\n", pat, c.IsNum)
-		err = ErrNotFoundFile
-	}
-	return
+	return paraGlob(pat), nil
 }
 
-func (c *Column) noMergedFPathWithPat() (idxfiles []string, pat string, err error) {
+func (c *Column) noMergedFPathWithPat() (idxfiles <-chan string, pat string, err error) {
 	path := ColumnPathWithStatus(c.TableDir(), c.Name, c.IsNum, "*", "*", RECORD_WRITTEN)
 	pat = fmt.Sprintf("%s.*.*", path)
 
-	idxfiles, err = filepath.Glob(pat)
-	if err != nil || len(idxfiles) == 0 {
-		Log(LOG_WARN, "column.cachingTri(): %s is not found\n", pat)
-		err = ErrNotFoundFile
-	}
-	return
+	return paraGlob(pat), pat, nil
 }
 
 func idxPath2Info(idxpath string) (fileID uint64, offset int64, first uint64, last uint64) {
@@ -507,13 +498,15 @@ func (c *Column) IsNumViaIndex() bool {
 	path := ColumnPath(c.TableDir(), c.Name, true)
 	pat := fmt.Sprintf("%s*", path)
 	Log(LOG_WARN, "finding %s files\n", pat)
-	idxfiles, err := filepath.Glob(pat)
-	if err != nil || len(idxfiles) == 0 {
+	idxfiles := paraGlob(pat)
+	_, ok := <-idxfiles
+	if !ok {
 		path = ColumnPath(c.TableDir()+"/"+AddingDir("*", 4), c.Name, true)
 		pat = fmt.Sprintf("%s*", path)
 		Log(LOG_WARN, "finding %s files\n", pat)
-		idxfiles, err = filepath.Glob(pat)
-		if err != nil || len(idxfiles) == 0 {
+		idxfiles = paraGlob(pat)
+		_, ok := <-idxfiles
+		if !ok {
 			Log(LOG_WARN, "not found %s files\n", pat)
 			return false
 		}
@@ -529,16 +522,10 @@ func (c *Column) loadIndex() error {
 
 	path := ColumnPathWithStatus(c.TableDir(), c.Name, c.IsNum, "*", "*", RECORD_MERGED)
 	pat := fmt.Sprintf("%s", path)
-	idxfiles, err := filepath.Glob(pat)
-	if err != nil || len(idxfiles) == 0 {
-		Log(LOG_WARN, "loadIndex() %s is not found. force creation ctx=%v\n", pat, c.ctx)
-		if c.ctx == nil {
-			c.ctx, c.ctxCancel = context.WithTimeout(context.Background(), 1*time.Minute)
-		}
-		go c.MergingIndex(c.ctx)
-		return ErrNotFoundFile
-	}
-	for _, file := range idxfiles {
+	idxfilesCh := paraGlob(pat)
+	cnt := 0
+	for file := range idxfilesCh {
+		cnt++
 		first := NewIndexInfo(idxPath2Info(file)).first
 		last := NewIndexInfo(idxPath2Info(file)).last
 		c.cache.infos = append(c.cache.infos,
@@ -548,6 +535,16 @@ func (c *Column) loadIndex() error {
 				last:  last,
 			})
 	}
+
+	if cnt == 0 {
+		Log(LOG_WARN, "loadIndex() %s is not found. force creation ctx=%v\n", pat, c.ctx)
+		if c.ctx == nil {
+			c.ctx, c.ctxCancel = context.WithTimeout(context.Background(), 1*time.Minute)
+		}
+		go c.MergingIndex(c.ctx)
+		return ErrNotFoundFile
+	}
+
 	return nil
 
 }
@@ -556,7 +553,7 @@ func (c *Column) mergingIndex(w IdxWriter, ctx context.Context) error {
 	c.done = make(chan bool, 2)
 	defer close(c.done)
 
-	noMergeIdxFiles, e := c.noMergedFPath()
+	noMergeIdxCh, e := c.noMergedFPath()
 	if e != nil {
 		return e
 	}
@@ -580,7 +577,7 @@ func (c *Column) mergingIndex(w IdxWriter, ctx context.Context) error {
 
 	var keyRecord *query.KeyRecord
 	var recs *query.RecordList
-	total := len(noMergeIdxFiles)
+	total := 10000 //len(noMergeIdxFiles)
 	p := mpb.New(mpb.WithWidth(64))
 	bar := p.AddBar(int64(total),
 		mpb.PrependDecorators(
@@ -592,9 +589,12 @@ func (c *Column) mergingIndex(w IdxWriter, ctx context.Context) error {
 		mpb.AppendDecorators(decor.CountersNoUnit("%d / %d")),
 	)
 
-	LastIdx := len(noMergeIdxFiles) - 1
+	LastIdx := 0 //len(noMergeIdxFiles) - 1
+	noMergeIdxFiles := []string{}
 
-	for i, noMergeIdxFile := range noMergeIdxFiles {
+	i := 0
+	for noMergeIdxFile := range noMergeIdxCh {
+		noMergeIdxFiles = append(noMergeIdxFiles, noMergeIdxFile)
 		bar.Increment()
 
 		rio, e := os.Open(noMergeIdxFile)
@@ -644,7 +644,7 @@ func (c *Column) mergingIndex(w IdxWriter, ctx context.Context) error {
 			goto FINISH
 		default:
 		}
-
+		i++
 	}
 
 FINISH:
@@ -758,8 +758,6 @@ func (r *Record) parse(raw []byte, dec Decoder) {
 }
 
 func (c *Column) RecordEqInt(v int) (record *Record) {
-
-	// files, e := filepath.Glob(fmt.Sprintf("%s.*-*", FileListPath(l.Dir)))
 
 	path := ColumnPathWithStatus(c.TableDir(), c.Name, true, toFname(uint64(v)), toFname(uint64(v)), RECORD_WRITTEN)
 	rio, e := os.Open(path)
@@ -929,14 +927,22 @@ func (c *Column) caching() (e error) {
 	return
 }
 func (c *Column) cachingTri() (e error) {
-	idxfiles, pat, e := c.noMergedFPathWithPat()
+	idxCh, pat, e := c.noMergedFPathWithPat()
 	if e != nil {
 		return e
+	}
+	cnt := 0
+	for _ = range idxCh {
+		cnt++
+	}
+	if cnt == 0 {
+		Log(LOG_WARN, "cachingTri(): %s is not found\n", pat)
+		return ErrNotFoundFile
 	}
 
 	c.cache.caches.pat = pat
 
-	c.cache.caches.cnt = len(idxfiles)
+	c.cache.caches.cnt = cnt
 	c.cache.caches.datas = make([]*IdxCache, c.cache.caches.cnt)
 	datafirst, e := c.cachingTriBy(0)
 	if e != nil {
@@ -951,12 +957,23 @@ func (c *Column) cachingTri() (e error) {
 
 func (c *Column) cachingTriBy(n int) (ic *IdxCache, e error) {
 
-	idxfiles, e := c.noMergedFPath()
+	idxCh, e := c.noMergedFPath()
 	if e != nil {
 		return nil, e
 	}
-
-	idxpath := idxfiles[n]
+	var idxpath string
+	cnt := 0
+	for s := range idxCh {
+		if cnt == n {
+			idxpath = s
+			break
+		}
+		cnt++
+	}
+	if len(idxpath) == 0 {
+		Log(LOG_WARN, "cachingTriBy(%d):  not found\n", n)
+		return nil, ErrNotFoundFile
+	}
 
 	//FIXME: use idxPath2Info()
 	strs := strings.Split(filepath.Base(idxpath), ".")
@@ -980,14 +997,19 @@ func (c *Column) cachingNum() (e error) {
 
 	path := ColumnPathWithStatus(c.TableDir(), c.Name, true, "*", "*", RECORD_WRITTEN)
 	pat := fmt.Sprintf("%s.*.*", path)
-	idxfiles, err := filepath.Glob(pat)
-	if err != nil || len(idxfiles) == 0 {
+	//idxfiles, err := filepath.Glob(pat)
+	idxCh := paraGlob(pat)
+	cnt := 0
+	for _ = range idxCh {
+		cnt++
+	}
+	if cnt == 0 {
 		Log(LOG_WARN, "%s is not found\n", pat)
 		return ErrNotFoundFile
 	}
 
 	c.cache.caches.pat = pat
-	c.cache.caches.cnt = len(idxfiles)
+	c.cache.caches.cnt = cnt
 	c.cache.caches.datas = make([]*IdxCache, c.cache.caches.cnt)
 	if c.cache.caches.datas[0], e = c.cachingNumBy(0); e != nil {
 		return e
@@ -1003,12 +1025,20 @@ func (c *Column) cachingNumBy(n int) (ic *IdxCache, e error) {
 	pat := c.cache.caches.pat
 	//fmt.Sprintf("%s.*.*", path)
 
-	idxfiles, err := filepath.Glob(pat)
-	if err != nil || len(idxfiles) == 0 {
+	idxCh := paraGlob(pat)
+	var idxpath string
+	cnt := 0
+	for s := range idxCh {
+		if cnt == n {
+			idxpath = s
+			break
+		}
+		cnt++
+	}
+	if len(idxpath) == 0 {
 		Log(LOG_WARN, "%s is not found\n", pat)
 		return nil, ErrNotFoundFile
 	}
-	idxpath := idxfiles[n]
 
 	strs := strings.Split(filepath.Base(idxpath), ".")
 	if len(strs) != 6 {
@@ -1371,4 +1401,59 @@ func (info ResultInfoRange) Last() OldSearchResult {
 
 	r.caching(s.c)
 	return r.cache
+}
+
+var GlobCache map[string][]string = map[string][]string{}
+
+func paraGlobCache(pat string) <-chan string {
+
+	ch := make(chan string, 100)
+	go func() {
+		for _, path := range GlobCache[pat] {
+			ch <- path
+		}
+		close(ch)
+	}()
+	return ch
+}
+
+func paraGlob(pat string) <-chan string {
+	if _, found := GlobCache[pat]; found {
+		return paraGlobCache(pat)
+	}
+
+	ch := make(chan string, 100)
+	go func() {
+		GlobCache = map[string][]string{}
+		GlobCache[pat] = make([]string, 0, 10)
+
+		strs := strings.Split(pat, "/*/*/*/")
+		var dir, after string
+		if len(strs) < 2 {
+			dir = filepath.Dir(pat)
+			after = filepath.Base(pat)
+		} else {
+			dir = strs[0]
+			after = strs[1]
+		}
+		err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if info.IsDir() {
+				return nil
+			}
+			validname := regexp.MustCompile(after)
+			if validname.MatchString(path) {
+				GlobCache[pat] = append(GlobCache[pat], path)
+				ch <- path
+			}
+			return nil
+		})
+		if err != nil {
+			Log(LOG_WARN, "paraGlob() err=%s", err)
+		}
+		close(ch)
+	}()
+	return ch
 }
