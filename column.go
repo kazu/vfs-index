@@ -11,7 +11,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -378,6 +377,18 @@ func (r *Record) Write(c *Column) error {
 func (c *Column) noMergedFPath() (idxfiles []string, err error) {
 	path := ColumnPathWithStatus(c.TableDir(), c.Name, c.IsNum, "*", "*", RECORD_WRITTEN)
 	pat := fmt.Sprintf("%s.*.*", path)
+
+	idxfiles, err = filepath.Glob(pat)
+	if err != nil || len(idxfiles) == 0 {
+		Log(LOG_WARN, "column.cachingTri(): %s is not found\n", pat)
+		err = ErrNotFoundFile
+	}
+	return
+}
+
+func (c *Column) noMergedFPathWithPat() (idxfiles []string, pat string, err error) {
+	path := ColumnPathWithStatus(c.TableDir(), c.Name, c.IsNum, "*", "*", RECORD_WRITTEN)
+	pat = fmt.Sprintf("%s.*.*", path)
 
 	idxfiles, err = filepath.Glob(pat)
 	if err != nil || len(idxfiles) == 0 {
@@ -855,88 +866,111 @@ func (c *Column) caching() (e error) {
 	return
 }
 func (c *Column) cachingTri() (e error) {
-	// path := ColumnPathWithStatus(c.TableDir(), c.Name, false, "*", "*", RECORD_WRITTEN)
-	// pat := fmt.Sprintf("%s.*.*", path)
-
-	// idxfiles, err := filepath.Glob(pat)
-	// if err != nil || len(idxfiles) == 0 {
-	// 	Log(LOG_WARN, "column.cachingTri(): %s is not found\n", pat)
-	// 	return ErrNotFoundFile
-	// }
-	idxfiles, e := c.noMergedFPath()
+	idxfiles, pat, e := c.noMergedFPathWithPat()
 	if e != nil {
 		return e
 	}
 
-	for _, idxpath := range idxfiles {
-		//FIXME: use idxPath2Info()
-		strs := strings.Split(filepath.Base(idxpath), ".")
-		if len(strs) != 6 {
-			continue
-		}
-		sRange := strs[3]
-		fileID, _ := strconv.ParseUint(strs[4], 16, 64)
-		offset, _ := strconv.ParseInt(strs[5], 16, 64)
+	c.cache.caches.pat = pat
 
-		strs = strings.Split(sRange, "-")
-		first, _ := strconv.ParseUint(strs[0], 16, 64)
-		last, _ := strconv.ParseUint(strs[1], 16, 64)
-
-		c.cache.caches = append(c.cache.caches,
-			&IdxCache{FirstEnd: Range{first: first, last: last},
-				Pos: RecordPos{fileID: fileID, offset: offset}})
-
+	c.cache.caches.cnt = len(idxfiles)
+	c.cache.caches.datas = make([]*IdxCache, c.cache.caches.cnt)
+	datafirst, e := c.cachingTriBy(0)
+	if e != nil {
+		return e
 	}
-	sort.Slice(c.cache.caches, func(i, j int) bool {
-		return c.cache.caches[i].FirstEnd.first < c.cache.caches[j].FirstEnd.first
-	})
+	c.cache.caches.datas[0] = datafirst
+	last := c.cache.caches.cnt - 1
+	c.cache.caches.datas[last], _ = c.cachingTriBy(last)
 
-	return
+	return nil
+}
+
+func (c *Column) cachingTriBy(n int) (ic *IdxCache, e error) {
+
+	idxfiles, e := c.noMergedFPath()
+	if e != nil {
+		return nil, e
+	}
+
+	idxpath := idxfiles[n]
+
+	//FIXME: use idxPath2Info()
+	strs := strings.Split(filepath.Base(idxpath), ".")
+	if len(strs) != 6 {
+		return nil, ErrInvalidIdxName
+	}
+	sRange := strs[3]
+	fileID, _ := strconv.ParseUint(strs[4], 16, 64)
+	offset, _ := strconv.ParseInt(strs[5], 16, 64)
+
+	strs = strings.Split(sRange, "-")
+	first, _ := strconv.ParseUint(strs[0], 16, 64)
+	last, _ := strconv.ParseUint(strs[1], 16, 64)
+
+	return &IdxCache{FirstEnd: Range{first: first, last: last},
+		Pos: RecordPos{fileID: fileID, offset: offset}}, nil
 
 }
+
 func (c *Column) cachingNum() (e error) {
 
 	path := ColumnPathWithStatus(c.TableDir(), c.Name, true, "*", "*", RECORD_WRITTEN)
 	pat := fmt.Sprintf("%s.*.*", path)
-
 	idxfiles, err := filepath.Glob(pat)
 	if err != nil || len(idxfiles) == 0 {
 		Log(LOG_WARN, "%s is not found\n", pat)
 		return ErrNotFoundFile
 	}
 
-	for _, idxpath := range idxfiles {
-		strs := strings.Split(filepath.Base(idxpath), ".")
-		if len(strs) != 6 {
-			continue
-		}
-		sRange := strs[3]
-		fileID, _ := strconv.ParseUint(strs[4], 16, 64)
-		offset, _ := strconv.ParseInt(strs[5], 16, 64)
-
-		strs = strings.Split(sRange, "-")
-		first, _ := strconv.ParseUint(strs[0], 16, 64)
-		last, _ := strconv.ParseUint(strs[1], 16, 64)
-
-		c.cache.caches = append(c.cache.caches,
-			&IdxCache{FirstEnd: Range{first: first, last: last},
-				Pos: RecordPos{fileID: fileID, offset: offset}})
-
+	c.cache.caches.pat = pat
+	c.cache.caches.cnt = len(idxfiles)
+	c.cache.caches.datas = make([]*IdxCache, c.cache.caches.cnt)
+	if c.cache.caches.datas[0], e = c.cachingNumBy(0); e != nil {
+		return e
 	}
-	sort.Slice(c.cache.caches, func(i, j int) bool {
-		return c.cache.caches[i].FirstEnd.first < c.cache.caches[j].FirstEnd.first
-	})
+	last := c.cache.caches.cnt - 1
+	c.cache.caches.datas[last], _ = c.cachingNumBy(last)
 
-	return
+	return nil
+}
+
+func (c *Column) cachingNumBy(n int) (ic *IdxCache, e error) {
+
+	pat := c.cache.caches.pat
+	//fmt.Sprintf("%s.*.*", path)
+
+	idxfiles, err := filepath.Glob(pat)
+	if err != nil || len(idxfiles) == 0 {
+		Log(LOG_WARN, "%s is not found\n", pat)
+		return nil, ErrNotFoundFile
+	}
+	idxpath := idxfiles[n]
+
+	strs := strings.Split(filepath.Base(idxpath), ".")
+	if len(strs) != 6 {
+		return nil, ErrInvalidIdxName
+	}
+	sRange := strs[3]
+	fileID, _ := strconv.ParseUint(strs[4], 16, 64)
+	offset, _ := strconv.ParseInt(strs[5], 16, 64)
+
+	strs = strings.Split(sRange, "-")
+	first, _ := strconv.ParseUint(strs[0], 16, 64)
+	last, _ := strconv.ParseUint(strs[1], 16, 64)
+
+	return &IdxCache{FirstEnd: Range{first: first, last: last},
+		Pos: RecordPos{fileID: fileID, offset: offset}}, nil
+
 }
 
 func (c *Column) keys(n int) (uint64, uint64) {
 	if len(c.cache.infos) > 0 {
-		pos := c.cache.head(n)
+		pos := c.head(n)
 		return pos, pos
 	}
-
-	return c.cache.caches[n].FirstEnd.first, c.cache.caches[n].FirstEnd.last
+	return c.getRowCache(n).FirstEnd.first, c.getRowCache(n).FirstEnd.last
+	//return c.cache.caches[n].FirstEnd.first, c.cache.caches[n].FirstEnd.last
 }
 
 func (c *Column) cacheToRecords(n int) (record []*Record) {
@@ -955,14 +989,15 @@ func (c *Column) cacheToRecords(n int) (record []*Record) {
 }
 func (c *Column) cacheToRecord(n int) *Record {
 
-	first := c.cache.caches[n].FirstEnd.first
-	last := c.cache.caches[n].FirstEnd.last
+	first := c.getRowCache(n).FirstEnd.first
+	last := c.getRowCache(n).FirstEnd.last
+
 	path := ColumnPathWithStatus(c.TableDir(), c.Name, c.IsNum, toFname(first), toFname(last), RECORD_WRITTEN)
 	if !c.IsNum {
 		path = ColumnPathWithStatus(c.TableDir(), c.Name, c.IsNum, toFnameTri(first), toFnameTri(last), RECORD_WRITTEN)
 	}
 
-	path = fmt.Sprintf("%s.%010x.%010x", path, c.cache.caches[n].Pos.fileID, c.cache.caches[n].Pos.offset)
+	path = fmt.Sprintf("%s.%010x.%010x", path, c.getRowCache(n).Pos.fileID, c.getRowCache(n).Pos.offset)
 
 	rio, e := os.Open(path)
 	if e != nil {
@@ -987,8 +1022,15 @@ type IdxCache struct {
 
 type IdxCaches struct {
 	infos     []*IdxInfo
-	caches    []*IdxCache
+	caches    RowIndex
 	negatives []*Range
+}
+
+type RowIndex struct {
+	cnt      int
+	pat      string
+	firstEnd Range
+	datas    []*IdxCache
 }
 
 type IdxInfo struct {
@@ -996,6 +1038,19 @@ type IdxInfo struct {
 	first uint64
 	last  uint64
 	buf   []byte
+}
+
+func (c *Column) getRowCache(n int) *IdxCache {
+	r := &c.cache.caches
+	if r.datas[n] != nil {
+		return r.datas[n]
+	}
+	if c.IsNum {
+		r.datas[n], _ = c.cachingNumBy(n)
+	} else {
+		r.datas[n], _ = c.cachingTriBy(n)
+	}
+	return r.datas[n]
 }
 
 func (info *IdxInfo) load(force bool) {
@@ -1010,10 +1065,10 @@ func (info *IdxInfo) load(force bool) {
 	info.buf, e = ioutil.ReadAll(f)
 }
 
-func (c *IdxCaches) head(n int) uint64 {
-
+func (col *Column) head(n int) uint64 {
+	c := col.cache
 	if c.countInInfos() <= n {
-		return c.caches[n-c.countInInfos()].FirstEnd.first
+		return col.getRowCache(n - c.countInInfos()).FirstEnd.first
 	}
 	cur := 0
 
@@ -1125,15 +1180,15 @@ func (c *IdxCaches) countInInfos() int {
 
 func (c *IdxCaches) countOfKeys() int {
 	if len(c.infos) == 0 {
-		return len(c.caches)
+		return c.caches.cnt
 	}
 
-	return c.countInInfos() + len(c.caches)
+	return c.countInInfos() + c.caches.cnt
 
 }
 
 func InitIdxCaches(i *IdxCaches) {
-	i.caches = make([]*IdxCache, 0, MAX_IDX_CACHE)
+	//i.caches = make([]*IdxCache, 0, MAX_IDX_CACHE)
 	i.negatives = make([]*Range, 0, MIN_NEGATIVE_CACHE)
 }
 
@@ -1157,7 +1212,7 @@ const (
 // Searcher ... return Search object for search operation
 func (c *Column) Searcher() *Searcher {
 	//if len(c.cache.caches) == 0 {
-	if c.cache.countOfKeys() == 0 || len(c.cache.caches) == 0 {
+	if c.cache.countOfKeys() == 0 || c.cache.caches.cnt == 0 {
 		c.ctx, c.ctxCancel = context.WithTimeout(context.Background(), 1*time.Minute)
 		c.caching()
 	} else if c.ctx == nil && c.isMergeOnSearch {
