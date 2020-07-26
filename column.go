@@ -2,13 +2,10 @@ package vfsindex
 
 import (
 	"context"
-	"regexp"
 
 	//"encoding/csv"
 
-	"encoding/json"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -16,13 +13,10 @@ import (
 	"strings"
 	"time"
 
-	query "github.com/kazu/vfs-index/qeury"
+	"github.com/kazu/vfs-index/query"
 
 	"github.com/kazu/loncha"
 	"github.com/kazu/vfs-index/vfs_schema"
-	"github.com/schollz/progressbar/v3"
-	"github.com/vbauerster/mpb/v5"
-	"github.com/vbauerster/mpb/v5/decor"
 )
 
 const (
@@ -50,155 +44,6 @@ type Column struct {
 	ctxCancel       context.CancelFunc
 	done            chan bool
 	isMergeOnSearch bool
-}
-
-type Record struct {
-	fileID uint64
-	offset int64
-	size   int64
-	cache  map[string]interface{}
-}
-
-type Records []*Record
-
-type Decoder struct {
-	FileType  string
-	Decoder   func([]byte, interface{}) error
-	Encoder   func(interface{}) ([]byte, error)
-	Tokenizer func(io.Reader, *File) <-chan *Record
-}
-
-var CsvHeader string
-
-var DefaultDecoder []Decoder = []Decoder{
-	Decoder{
-		FileType: "csv",
-		Encoder: func(v interface{}) ([]byte, error) {
-			return json.Marshal(v)
-		},
-		Decoder: func(raw []byte, v interface{}) error {
-			// header := strings.Split(CsvHeader, ",")
-			// dec, err := csvutil.NewDecoder(bytes.NewReader(raw), header...)
-			// if err != nil {
-			// 	return err
-			// }
-			// dec.Map = func(field, column string, v interface{}) string {
-			// 	if _, ok := v.(float64); ok && field == "n/a" {
-			// 		return "NaN"
-			// 	}
-			// 	return field
-			return nil
-		},
-		Tokenizer: func(rio io.Reader, f *File) <-chan *Record {
-			ch := make(chan *Record, 5)
-
-			go func() {
-				buf, err := ioutil.ReadAll(rio)
-
-				if err != nil {
-					defer close(ch)
-
-				}
-
-				s := string(buf)
-
-				lines := strings.Split(s, "\n")
-				CsvHeader = lines[0]
-				lines = lines[1:]
-				cur := len(CsvHeader) + 1
-				for _, line := range lines {
-					ch <- &Record{fileID: f.id, offset: int64(cur), size: int64(len(line))}
-					cur += len(line) + 1
-				}
-				close(ch)
-			}()
-			return ch
-		},
-	},
-	Decoder{
-		FileType: "json",
-		Encoder: func(v interface{}) ([]byte, error) {
-			return json.Marshal(v)
-		},
-		Decoder: func(raw []byte, v interface{}) error {
-			e := json.Unmarshal(raw, v)
-			if e != nil {
-				return e
-			}
-			if value, ok := v.(*(map[string]interface{})); ok {
-				for key, v := range *value {
-					if f64, ok := v.(float64); ok {
-						(*value)[key] = uint64(f64)
-					}
-				}
-			}
-			return nil
-
-		},
-		Tokenizer: func(rio io.Reader, f *File) <-chan *Record {
-			ch := make(chan *Record, 5)
-			go func() {
-				dec := json.NewDecoder(rio)
-
-				var rec *Record
-
-				nest := int(0)
-				for {
-					token, err := dec.Token()
-					if err == io.EOF {
-						break
-					}
-					switch token {
-					case json.Delim('{'):
-						nest++
-						if nest == 1 {
-							rec = &Record{fileID: f.id, offset: dec.InputOffset() - 1}
-						}
-
-					case json.Delim('}'):
-						nest--
-						if nest == 0 {
-							rec.size = dec.InputOffset() - rec.offset
-							ch <- rec
-						}
-					}
-				}
-				close(ch)
-			}()
-			return ch
-		},
-	},
-}
-
-// GetDecoder ... return format Decoder/Encoder from fname(file name)
-func GetDecoder(fname string) (dec Decoder, e error) {
-	if len(fname) < 1 {
-		return dec, ErrInvalidTableName
-	}
-
-	ext := filepath.Ext(fname)[1:]
-
-	idx, e := loncha.IndexOf(DefaultDecoder, func(i int) bool {
-		return DefaultDecoder[i].FileType == ext
-	})
-	if e != nil {
-		Log(LOG_ERROR, "cannot find %s decoder\n", ext)
-		return dec, e
-	}
-	return DefaultDecoder[idx], nil
-
-}
-
-func NewRecords(n int) Records {
-	return make(Records, 0, n)
-}
-
-func NewRecord(id uint64, offset, size int64) *Record {
-	return &Record{fileID: id, offset: offset, size: size}
-}
-
-func (recs Records) Add(r *Record) Records {
-	return append(recs, r)
 }
 
 func ColumnPath(tdir, col string, isNum bool) string {
@@ -312,7 +157,9 @@ func (c *Column) Update(d time.Duration) error {
 func (c *Column) updateFile(f *File) {
 
 	for r := range f.Records(c.Flist.Dir) {
-		c.Dirties = c.Dirties.Add(r)
+		if !r.IsExist(c) {
+			c.Dirties = c.Dirties.Add(r)
+		}
 	}
 }
 
@@ -322,10 +169,15 @@ func (c *Column) WriteDirties() {
 	}
 	s := time.Now()
 	Log(LOG_WARN, "Indexing %d concurrent\n", Opt.cntConcurrent)
-	ch := make(chan int, len(c.Dirties))
+	ch := make(chan int, Opt.cntConcurrent*4)
 	chDone := make(chan bool, Opt.cntConcurrent)
 
-	bar := progressbar.Default(int64(len(c.Dirties)))
+	//bar := progressbar.Default(int64(len(c.Dirties)))
+	bar := Pbar.Add("write index...", len(c.Dirties))
+	defer func() {
+		bar.SetTotal(bar.Current(), true)
+	}()
+
 	writeRecord := func(ch chan int) {
 		for {
 			i, ok := <-ch
@@ -336,7 +188,7 @@ func (c *Column) WriteDirties() {
 			e := r.Write(c)
 			if e == nil {
 				c.Dirties[i] = nil
-				bar.Add(1)
+				bar.Increment()
 			}
 		}
 		chDone <- true
@@ -397,45 +249,31 @@ func (c *Column) MergingIndex(ctx context.Context) error {
 	return c.mergingIndex(idxWriter, ctx)
 
 }
-
-// Write ... write column index
-func (r *Record) Write(c *Column) error {
-
-	var idxWriter IdxWriter
-	r.caching(c)
-
-	if _, ok := r.cache[c.Name].(string); ok {
-		idxWriter = IdxWriter{
-			IsNum: false,
-			ValueEncoder: func(r *Record) (results []string) {
-				//return []string{toFname(r.Uint64Value(c))}
-				return EncodeTri(r.StrValue(c))
-			},
-		}
-	} else {
-		idxWriter = IdxWriter{
-			IsNum: true,
-			ValueEncoder: func(r *Record) (results []string) {
-				return []string{toFname(r.Uint64Value(c))}
-			},
-		}
-	}
-	return r.write(c, idxWriter)
-
+func (c *Column) noMergedPat() string {
+	path := ColumnPathWithStatus(c.TableDir(), c.Name, c.IsNum, "*", "*", RECORD_WRITTEN)
+	pat := fmt.Sprintf("%s.*.*", path)
+	return pat
 }
+
+// func (c *Column) noMergedFPathNoCh() (idxfiles <-chan string, err error) {
+// 	path := ColumnPathWithStatus(c.TableDir(), c.Name, c.IsNum, "*", "*", RECORD_WRITTEN)
+// 	pat := fmt.Sprintf("%s.*.*", path)
+
+// 	return paraGlobDebug(pat, true), nil
+//}
 
 func (c *Column) noMergedFPath() (idxfiles <-chan string, err error) {
 	path := ColumnPathWithStatus(c.TableDir(), c.Name, c.IsNum, "*", "*", RECORD_WRITTEN)
 	pat := fmt.Sprintf("%s.*.*", path)
 
-	return paraGlob(pat), nil
+	return paraGlobDebug(pat, true), nil
 }
 
 func (c *Column) noMergedFPathWithPat() (idxfiles <-chan string, pat string, err error) {
 	path := ColumnPathWithStatus(c.TableDir(), c.Name, c.IsNum, "*", "*", RECORD_WRITTEN)
 	pat = fmt.Sprintf("%s.*.*", path)
 
-	return paraGlob(pat), pat, nil
+	return paraGlobDebug(pat, false), pat, nil
 }
 
 func idxPath2Info(idxpath string) (fileID uint64, offset int64, first uint64, last uint64) {
@@ -495,6 +333,31 @@ func NewIndexInfo(fileID uint64, offset int64, first uint64, last uint64) IndexP
 
 func (c *Column) IsNumViaIndex() bool {
 
+	var file *File
+	if len(c.Flist.Files) == 0 {
+		c.Flist.Reload()
+	}
+
+	for _, f := range c.Flist.Files {
+		if len(f.name) <= len(filepath.Base(c.Table)) {
+			continue
+		}
+		if f.name[0:len(filepath.Base(c.Table))] == c.Table {
+			file = f
+			break
+		}
+	}
+	r := <-file.Records(c.Flist.Dir)
+	r.caching(c)
+	if _, ok := r.cache[c.Name].(string); ok {
+		return false
+	}
+	return true
+
+}
+
+func (c *Column) OldIsNumViaIndex() bool {
+
 	path := ColumnPath(c.TableDir(), c.Name, true)
 	pat := fmt.Sprintf("%s*", path)
 	Log(LOG_WARN, "finding %s files\n", pat)
@@ -522,10 +385,18 @@ func (c *Column) loadIndex() error {
 
 	path := ColumnPathWithStatus(c.TableDir(), c.Name, c.IsNum, "*", "*", RECORD_MERGED)
 	pat := fmt.Sprintf("%s", path)
-	idxfilesCh := paraGlob(pat)
-	cnt := 0
-	for file := range idxfilesCh {
-		cnt++
+	if !hasGlobCache(pat) {
+		ch := paraGlob(pat)
+		for range ch {
+		}
+	}
+
+	//	cnt := globCacheInstance.Get(pat).Count()
+	gCache := globCacheInstance.Get(pat)
+	cnt := gCache.Count()
+
+	for i := 0; i < cnt; i++ {
+		file := string(query.PathInfoSingle(gCache.At(i)).Path().Bytes())
 		first := NewIndexInfo(idxPath2Info(file)).first
 		last := NewIndexInfo(idxPath2Info(file)).last
 		c.cache.infos = append(c.cache.infos,
@@ -551,12 +422,25 @@ func (c *Column) loadIndex() error {
 func (c *Column) mergingIndex(w IdxWriter, ctx context.Context) error {
 
 	c.done = make(chan bool, 2)
-	defer close(c.done)
+	defer func() {
+		Log(LOG_DEBUG, "mergingIndex() done\n")
+		close(c.done)
+	}()
+	Log(LOG_DEBUG, "mergingIndex() start\n")
 
-	noMergeIdxCh, e := c.noMergedFPath()
-	if e != nil {
-		return e
+	pat := c.noMergedPat()
+	if !hasGlobCache(pat) {
+		ch := paraGlob(pat)
+		for range ch {
+
+		}
 	}
+	noMergeIdxPath := globCacheInstance.Get(pat)
+
+	// noMergeIdxCh, e := c.noMergedFPath()
+	// if e != nil {
+	// 	return e
+	// }
 	//noMergeIdxFiles = noMergeIdxFiles[0:20]
 
 	vname := func(key uint64) string {
@@ -577,23 +461,31 @@ func (c *Column) mergingIndex(w IdxWriter, ctx context.Context) error {
 
 	var keyRecord *query.KeyRecord
 	var recs *query.RecordList
-	total := 10000 //len(noMergeIdxFiles)
-	p := mpb.New(mpb.WithWidth(64))
-	bar := p.AddBar(int64(total),
-		mpb.PrependDecorators(
-			decor.Name("index merging", decor.WC{W: len("index merging") + 1, C: decor.DidentRight}),
-			decor.OnComplete(
-				decor.AverageETA(decor.ET_STYLE_GO, decor.WC{W: 4}), "done",
-			),
-		),
-		mpb.AppendDecorators(decor.CountersNoUnit("%d / %d")),
-	)
+	total := noMergeIdxPath.Count()
+
+	// p := mpb.New(mpb.WithWidth(64))
+	// bar := p.AddBar(int64(total),
+	// 	mpb.PrependDecorators(
+	// 		decor.Name("index merging", decor.WC{W: len("index merging") + 1, C: decor.DidentRight}),
+	// 		decor.OnComplete(
+	// 			decor.AverageETA(decor.ET_STYLE_GO, decor.WC{W: 4}), "done",
+	// 		),
+	// 	),
+	// 	mpb.AppendDecorators(decor.CountersNoUnit("%d / %d")),
+	// )
+	bar := Pbar.Add("index merging", total)
 
 	LastIdx := 0 //len(noMergeIdxFiles) - 1
 	noMergeIdxFiles := []string{}
 
 	i := 0
-	for noMergeIdxFile := range noMergeIdxCh {
+	for j := 0; j < noMergeIdxPath.Count(); j++ {
+		//	for noMergeIdxFile := range noMergeIdxCh {
+		noMergeIdxFile := string(query.PathInfoSingle(globCacheInstance.Get(c.noMergedPat()).At(j)).Path().Bytes())
+		bar.Increment()
+		if !FileExist(noMergeIdxFile) {
+			continue
+		}
 		noMergeIdxFiles = append(noMergeIdxFiles, noMergeIdxFile)
 		bar.Increment()
 
@@ -640,7 +532,13 @@ func (c *Column) mergingIndex(w IdxWriter, ctx context.Context) error {
 		case <-ctx.Done():
 			LastIdx = i
 			Log(LOG_WARN, "mergingIndex cancel() last_merge=%s\n", noMergeIdxFile)
-			bar.IncrBy(len(noMergeIdxFiles) - i)
+			//bar.IncrBy(len(noMergeIdxFiles) - i)
+
+			globCacheInstance.Finish(c.noMergedPat())
+			defer func() {
+				bar.SetTotal(int64(j), true)
+				Pbar.wg.Done()
+			}()
 			goto FINISH
 		default:
 		}
@@ -709,58 +607,6 @@ FINISH:
 	return nil
 }
 
-func (r *Record) write(c *Column, w IdxWriter) error {
-
-	for _, vName := range w.ValueEncoder(r) {
-
-		wPath := ColumnPathWithStatus(c.TableDir(), c.Name, w.IsNum, vName, vName, RECORD_WRITING)
-		path := ColumnPathWithStatus(c.TableDir(), c.Name, w.IsNum, vName, vName, RECORD_WRITTEN)
-		path = fmt.Sprintf("%s.%010x.%010x", path, r.fileID, r.offset)
-
-		//Log(LOG_DEBUG, "path=%s %s \n", wPath, c.TableDir(), c)
-		if FileExist(path) {
-			//Log(LOG_WARN, "F: skip create %s. %s is already exists \n", wPath, path)
-			continue
-		}
-		io, e := os.Create(wPath)
-		if e != nil {
-			Log(LOG_WARN, "F: create...%s err=%s\n", wPath, e)
-			return e
-		}
-		io.Write(r.ToFbs(r.Uint64Value(c)))
-
-		io.Close()
-		Log(LOG_DEBUG, "S: written %s \n", wPath)
-		os.MkdirAll(filepath.Dir(path), os.ModePerm)
-		if w.IsNum && r.Uint64Value(c) == 0 {
-			//spew.Dump(r)
-		}
-
-		e = SafeRename(wPath, path)
-		if e != nil {
-			os.Remove(wPath)
-			Log(LOG_DEBUG, "F: rename %s -> %s \n", wPath, path)
-			return e
-		}
-		Log(LOG_DEBUG, "S: renamed%s -> %s \n", wPath, path)
-
-	}
-
-	return nil
-}
-
-func (r *Record) parse(raw []byte, dec Decoder) {
-
-	e := dec.Decoder(raw, &r.cache)
-
-	if e != nil {
-		Log(LOG_ERROR, "e=%s Raw='%s' Record=%+v\n", e, strings.ReplaceAll(string(raw), "\n", ""), r.cache)
-		return
-	}
-
-	return
-}
-
 func (c *Column) RecordEqInt(v int) (record *Record) {
 
 	path := ColumnPathWithStatus(c.TableDir(), c.Name, true, toFname(uint64(v)), toFname(uint64(v)), RECORD_WRITTEN)
@@ -775,145 +621,13 @@ func (c *Column) RecordEqInt(v int) (record *Record) {
 	return nil
 }
 
-func toFname(i interface{}) string {
-	return fmt.Sprintf("%010x", i)
-}
-
-func toFnameTri(i interface{}) string {
-	return fmt.Sprintf("%012x", i)
-}
-
 func (c *Column) TableDir() string {
 
 	return filepath.Join(c.Dir, c.Table)
 }
 
-type IdxWriter struct {
-	IsNum        bool
-	ValueEncoder func(r *Record) []string
-}
-
-func EncodeTri(s string) (result []string) {
-
-	runes := []rune(s)
-
-	for idx := range runes {
-		if idx > len(runes)-3 {
-			break
-		}
-		Log(LOG_DEBUG, "tri-gram %s\n", string(runes[idx:idx+3]))
-		result = append(result,
-			fmt.Sprintf("%04x%04x%04x", runes[idx], runes[idx+1], runes[idx+2]))
-	}
-
-	return
-}
-
-func (r *Record) caching(c *Column) {
-
-	if r.cache != nil {
-		return
-	}
-
-	data := r.Raw(c)
-	if data == nil {
-		Log(LOG_WARN, "fail got data r=%+v\n", r)
-		return
-	}
-	fname, _ := c.Flist.FPath(r.fileID)
-	decoder, e := GetDecoder(fname)
-	if e != nil {
-		Log(LOG_ERROR, "Record.caching():  cannot find %s decoder\n", fname)
-		return
-	}
-
-	r.parse(data, decoder)
-
-}
-
-func (r *Record) Raw(c *Column) (data []byte) {
-
-	path, err := c.Flist.FPath(r.fileID)
-	if err != nil {
-		Log(LOG_ERROR, "Flist.FPath fail e=%s r=%+v\n", err.Error(), r)
-		return nil
-	}
-
-	f, err := os.Open(path)
-	if err != nil {
-		Log(LOG_WARN, "%s should remove from Column.Dirties \n", path)
-		// FIXME: remove from Column.Dirties
-		return nil
-	}
-	data = make([]byte, r.size)
-	if n, e := f.ReadAt(data, r.offset); e != nil || int64(n) != r.size {
-		Log(LOG_WARN, "%s is nvalid data: should remove from Column.Dirties \n", path)
-		return nil
-	}
-
-	return data
-
-}
-
-func (r *Record) Uint64Value(c *Column) uint64 {
-	v, ok := r.cache[c.Name].(uint64)
-	_ = ok
-	return uint64(v)
-}
-
-func (r *Record) StrValue(c *Column) string {
-	v, ok := r.cache[c.Name].(string)
-	_ = ok
-	return v
-}
-
-func (r *Record) ToFbs(inf interface{}) []byte {
-
-	key, ok := inf.(uint64)
-	if !ok {
-		return nil
-	}
-
-	root := query.NewRoot()
-	root.SetVersion(query.FromInt32(1))
-	root.WithHeader()
-
-	inv := query.NewInvertedMapNum()
-	inv.SetKey(query.FromInt64(int64(key)))
-
-	rec := query.NewRecord()
-	rec.SetFileId(query.FromUint64(r.fileID))
-	rec.SetOffset(query.FromInt64(r.offset))
-	rec.SetSize(query.FromInt64(r.size))
-	rec.SetOffsetOfValue(query.FromInt32(0))
-	rec.SetValueSize(query.FromInt32(0))
-
-	inv.SetValue(rec.CommonNode)
-
-	root.SetIndexType(query.FromByte(byte(vfs_schema.IndexInvertedMapNum)))
-	root.SetIndex(inv.CommonNode)
-
-	// FIXME return io writer ?
-	root.Merge()
-	return root.R(0)
-}
-
-func fbsRecord(r io.Reader) *query.Record {
-	root := query.Open(r, 512)
-	return root.Index().InvertedMapNum().Value()
-}
-
-func RecordFromFbs(r io.Reader) *Record {
-
-	rec := fbsRecord(r)
-
-	return &Record{fileID: rec.FileId().Uint64(),
-		offset: rec.Offset().Int64(),
-		size:   rec.Size().Int64(),
-	}
-}
-
 func (c *Column) caching() (e error) {
+
 	e = c.loadIndex()
 	// if e == nil {
 	// 	return
@@ -931,19 +645,27 @@ func (c *Column) caching() (e error) {
 	return
 }
 func (c *Column) cachingTri() (e error) {
-	idxCh, pat, e := c.noMergedFPathWithPat()
-	if e != nil {
-		return e
+	Log(LOG_DEBUG, "cachingTri() start\n")
+	defer Log(LOG_DEBUG, "cachingTri() done\n")
+	pat := c.noMergedPat()
+
+	if !hasGlobCache(pat) {
+		ch, e := c.noMergedFPath()
+		if e != nil {
+			return e
+		}
+		for range ch {
+
+		}
 	}
-	cnt := 0
-	for _ = range idxCh {
-		cnt++
-	}
+	list := globCacheInstance.Get(pat)
+
+	cnt := list.Count()
 	if cnt == 0 {
 		Log(LOG_WARN, "cachingTri(): %s is not found\n", pat)
 		return ErrNotFoundFile
 	}
-
+	Log(LOG_WARN, "cachingTri(): %s is found, len=%d\n", pat, cnt)
 	c.cache.caches.pat = pat
 
 	c.cache.caches.cnt = cnt
@@ -961,19 +683,7 @@ func (c *Column) cachingTri() (e error) {
 
 func (c *Column) cachingTriBy(n int) (ic *IdxCache, e error) {
 
-	idxCh, e := c.noMergedFPath()
-	if e != nil {
-		return nil, e
-	}
-	var idxpath string
-	cnt := 0
-	for s := range idxCh {
-		if cnt == n {
-			idxpath = s
-			break
-		}
-		cnt++
-	}
+	idxpath := string(query.PathInfoSingle(globCacheInstance.Get(c.noMergedPat()).At(n)).Path().Bytes())
 	if len(idxpath) == 0 {
 		Log(LOG_WARN, "cachingTriBy(%d):  not found\n", n)
 		return nil, ErrNotFoundFile
@@ -1002,11 +712,14 @@ func (c *Column) cachingNum() (e error) {
 	path := ColumnPathWithStatus(c.TableDir(), c.Name, true, "*", "*", RECORD_WRITTEN)
 	pat := fmt.Sprintf("%s.*.*", path)
 	//idxfiles, err := filepath.Glob(pat)
-	idxCh := paraGlob(pat)
-	cnt := 0
-	for _ = range idxCh {
-		cnt++
+	if !hasGlobCache(pat) {
+		ch := paraGlob(pat)
+		for range ch {
+
+		}
 	}
+	cnt := globCacheInstance.Get(pat).Count()
+
 	if cnt == 0 {
 		Log(LOG_WARN, "%s is not found\n", pat)
 		return ErrNotFoundFile
@@ -1028,17 +741,8 @@ func (c *Column) cachingNumBy(n int) (ic *IdxCache, e error) {
 
 	pat := c.cache.caches.pat
 	//fmt.Sprintf("%s.*.*", path)
+	idxpath := string(query.PathInfoSingle(globCacheInstance.Get(c.noMergedPat()).At(n)).Path().Bytes())
 
-	idxCh := paraGlob(pat)
-	var idxpath string
-	cnt := 0
-	for s := range idxCh {
-		if cnt == n {
-			idxpath = s
-			break
-		}
-		cnt++
-	}
 	if len(idxpath) == 0 {
 		Log(LOG_WARN, "%s is not found\n", pat)
 		return nil, ErrNotFoundFile
@@ -1405,59 +1109,4 @@ func (info ResultInfoRange) Last() OldSearchResult {
 
 	r.caching(s.c)
 	return r.cache
-}
-
-var GlobCache map[string][]string = map[string][]string{}
-
-func paraGlobCache(pat string) <-chan string {
-
-	ch := make(chan string, 100)
-	go func() {
-		for _, path := range GlobCache[pat] {
-			ch <- path
-		}
-		close(ch)
-	}()
-	return ch
-}
-
-func paraGlob(pat string) <-chan string {
-	if _, found := GlobCache[pat]; found {
-		return paraGlobCache(pat)
-	}
-
-	ch := make(chan string, 100)
-	go func() {
-		GlobCache = map[string][]string{}
-		GlobCache[pat] = make([]string, 0, 10)
-
-		strs := strings.Split(pat, "/*/*/*/")
-		var dir, after string
-		if len(strs) < 2 {
-			dir = filepath.Dir(pat)
-			after = filepath.Base(pat)
-		} else {
-			dir = strs[0]
-			after = strs[1]
-		}
-		err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
-			if info.IsDir() {
-				return nil
-			}
-			validname := regexp.MustCompile(after)
-			if validname.MatchString(path) {
-				GlobCache[pat] = append(GlobCache[pat], path)
-				ch <- path
-			}
-			return nil
-		})
-		if err != nil {
-			Log(LOG_WARN, "paraGlob() err=%s", err)
-		}
-		close(ch)
-	}()
-	return ch
 }

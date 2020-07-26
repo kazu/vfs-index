@@ -2,8 +2,10 @@ package vfsindex_test
 
 import (
 	"fmt"
+	"io/ioutil"
 	"os"
 	"testing"
+	"time"
 
 	"go/types"
 
@@ -60,7 +62,8 @@ func TestRegist(t *testing.T) {
 
 	vfs.LogWriter = DiscardString{}
 
-	idx, e := vfs.Open("/Users/xtakei/git/vfs-index/example/data", DefaultOption())
+	idx, e := vfs.Open("/Users/xtakei/git/vfs-index/example/data",
+		vfs.RootDir("/Users/xtakei/git/vfs-index/example/vfs-regist-test"))
 
 	assert.NotNil(t, idx)
 	assert.NoError(t, e)
@@ -262,5 +265,91 @@ func TestEncodeTri(t *testing.T) {
 
 	l := len(b)
 	fmt.Println(l)
+
+}
+
+func TestAddingDir(t *testing.T) {
+
+	s := "308830533057"
+	d := vfs.AddingDir(s, 4)
+
+	assert.Equal(t, d, "3088/3053/3057/")
+
+	s = "0007530e41"
+	d = vfs.AddingDir(s, 4)
+	assert.Equal(t, d, "0007/530e/41/")
+
+}
+
+func TestMerge(t *testing.T) {
+	vfs.CurrentLogLoevel = vfs.LOG_WARN
+	idx, e := vfs.Open("/Users/xtakei/git/vfs-index/example/data",
+		vfs.RootDir("/Users/xtakei/git/vfs-index/example/vfs-tmp"))
+
+	sCond := idx.On("test", vfs.ReaderColumn("id"), vfs.MergeOnSearch(true))
+	sCond.Searcher()
+	time.Sleep(1 * time.Minute)
+	sCond.CancelAndWait()
+	assert.Equal(t, 1, 1)
+	assert.NoError(t, e)
+}
+
+func TestBufWriterIO(t *testing.T) {
+
+	f, _ := os.Create("hoge.txt")
+	defer os.Remove("hoge.txt")
+
+	b := vfs.NewBufWriterIO(f, 512)
+
+	for i := 0; i < 8000; i++ {
+		l := i % 10
+		b.Write([]byte(fmt.Sprintf("%d", l)))
+	}
+	b.Flush()
+
+	f.Close()
+
+	f, _ = os.Open("hoge.txt")
+	buf, _ := ioutil.ReadAll(f)
+
+	assert.True(t, len(buf) > 1000)
+	i := 475
+	l := 475 % 10
+	assert.Equal(t, fmt.Sprintf("%d", l)[0], buf[i])
+}
+
+func Test_WriteAt_BufWriterIO(t *testing.T) {
+
+	f, _ := os.Create("hoge.txt")
+	defer os.Remove("hoge.txt")
+
+	b := vfs.NewBufWriterIO(f, 512)
+
+	for i := 0; i < 8000; i++ {
+		l := i % 10
+		//b.Write([]byte(fmt.Sprintf("%d", l)))
+		b.WriteAt([]byte(fmt.Sprintf("%d", l)), int64(i+10))
+	}
+	b.Flush()
+
+	f.Close()
+
+	f, _ = os.Open("hoge.txt")
+	buf, _ := ioutil.ReadAll(f)
+
+	assert.True(t, len(buf) > 1000)
+	i := 475
+	l := 475 % 10
+	assert.Equal(t, fmt.Sprintf("%d", l)[0], buf[i])
+}
+
+func TestColumnPathWithStatus(t *testing.T) {
+
+	OpenIndexer()
+	s := vfs.ColumnPathWithStatus("test", "name", false, "308830533057", "308830533057", vfs.RECORD_WRITTEN)
+	s2 := vfs.ColumnPathWithStatus("test", "name", false, "*", "*", vfs.RECORD_WRITTEN)
+
+	assert.Equal(t, s, "/Users/xtakei/git/vfs-index/example/vfs/test/3088/3053/3057/name.gram.idx.308830533057-308830533057")
+	assert.Equal(t, s2, "/Users/xtakei/git/vfs-index/example/vfs/test/*/*/*/name.gram.idx.*-*")
 
 }

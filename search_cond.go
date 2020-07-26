@@ -8,7 +8,7 @@ import (
 
 	"github.com/kazu/loncha"
 	"github.com/kazu/vfs-index/expr"
-	query "github.com/kazu/vfs-index/qeury"
+	"github.com/kazu/vfs-index/query"
 )
 
 // SearchCond .. saerch condition object.

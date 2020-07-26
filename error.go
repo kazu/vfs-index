@@ -6,4 +6,5 @@ var (
 	ErrInvalidTableName = errors.New("table name is invalid")
 	ErrNotFoundFile     = errors.New("file not found")
 	ErrInvalidIdxName   = errors.New("idx file name is invalid")
+	ErrNotHasColumn     = errors.New("record dosent have this column")
 )

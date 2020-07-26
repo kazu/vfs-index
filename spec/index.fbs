@@ -6,8 +6,18 @@ union Index {
     IndexString,
     File,
     InvertedMapNum,
-    InvertedMapString
+    InvertedMapString,
+    IdxEntry
 }
+
+table IdxEntry {
+    pathinfos:[PathInfo];
+}
+
+table PathInfo {
+    path:string;
+}
+  
 
 table IndexNum {
     indexes:[KeyRecord];

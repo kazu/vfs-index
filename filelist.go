@@ -15,7 +15,7 @@ import (
 	"github.com/kazu/fbshelper/query/base"
 
 	"github.com/kazu/loncha"
-	query "github.com/kazu/vfs-index/qeury"
+	"github.com/kazu/vfs-index/query"
 	"github.com/kazu/vfs-index/vfs_schema"
 )
 
