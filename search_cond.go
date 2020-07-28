@@ -648,7 +648,7 @@ func (cond *SearchCond) findBy(col string, keys []uint64) (sinfo *SearchFinder) 
 
 	key2searchFinder := func(key uint64) *SearchFinder {
 		idxs := idxFinder.FindByKey(key)
-		if len(idxs) == 0 {
+		if len(idxs) == 0 || idxs[0] == nil {
 			return nil
 		}
 		if idxs[0].IsType(IdxFileType_Write) {
