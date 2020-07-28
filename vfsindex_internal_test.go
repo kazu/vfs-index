@@ -57,11 +57,11 @@ func Test_FindByKey_IndexFIle(t *testing.T) {
 	f := finder.FindByKey(0xbfca7e)
 
 	assert.NoError(t, e)
-	assert.NotNil(t, uint64(0xbfca7e), f.IdxInfo().first)
+	assert.NotNil(t, uint64(0xbfca7e), f[0].IdxInfo().first)
 
 	f = finder.FindByKey(0xbfca7c)
 
-	assert.NotNil(t, uint64(0xbfca7c), f.IdxInfo().first)
+	assert.NotNil(t, uint64(0xbfca7c), f[0].IdxInfo().first)
 }
 
 func Test_SearchCond_First(t *testing.T) {

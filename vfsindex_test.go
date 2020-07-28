@@ -22,7 +22,7 @@ func DefaultOption() vfs.Option {
 }
 
 func OpenIndexer() (*vfs.Indexer, error) {
-	return vfs.Open("/Users/xtakei/git/vfs-index/example/data", DefaultOption())
+	return vfs.Open("/Users/xtakei/git/vfs-index/example/data", DefaultOption(), vfs.MergeDuration(10*time.Second))
 
 }
 
@@ -62,8 +62,9 @@ func TestRegist(t *testing.T) {
 
 	vfs.LogWriter = DiscardString{}
 
+	os.RemoveAll("/Users/xtakei/git/vfs-index/example/vfs-regist-test")
 	idx, e := vfs.Open("/Users/xtakei/git/vfs-index/example/data",
-		vfs.RootDir("/Users/xtakei/git/vfs-index/example/vfs-regist-test"))
+		vfs.RootDir("/Users/xtakei/git/vfs-index/example/vfs-regist-test"), vfs.MergeDuration(10*time.Second))
 
 	assert.NotNil(t, idx)
 	assert.NoError(t, e)
@@ -76,7 +77,7 @@ func TestStringRegist(t *testing.T) {
 	//vfs.CurrentLogLoevel = vfs.LOG_DEBUG
 	//vfs.LogWriter = DiscardString{}
 
-	idx, e := vfs.Open("/Users/xtakei/git/vfs-index/example/data", DefaultOption())
+	idx, e := vfs.Open("/Users/xtakei/git/vfs-index/example/data", DefaultOption(), vfs.MergeDuration(10*time.Second))
 
 	assert.NotNil(t, idx)
 	assert.NoError(t, e)
@@ -85,83 +86,58 @@ func TestStringRegist(t *testing.T) {
 	assert.NoError(t, e)
 }
 
-func Test_SearcherFirst(t *testing.T) {
+// func Test_SearcherFindAll(t *testing.T) {
 
-	idx, e := OpenIndexer()
+// 	//vfs.LogWriter = DiscardString{}
 
-	sCond := idx.On("test", vfs.ReaderColumn("id"), vfs.Output(vfs.MapInfOutput))
+// 	idx, e := OpenIndexer()
 
-	record := sCond.Searcher().Select(func(m vfs.Match) bool {
-		v := m.Get("id").(uint64)
-		return v < 122878513
-	}).First()
-	result := sCond.ToMapInf(record)
+// 	sCond := idx.On("test", vfs.ReaderColumn("id"), vfs.Output(vfs.MapInfOutput))
 
-	result_id, ok := result["id"].(uint64)
-	sCond.CancelAndWait()
+// 	records := sCond.Searcher().Select(func(m vfs.Match) bool {
+// 		v := m.Get("id").(uint64)
+// 		return v > 4568788719
+// 	}).All()
 
-	assert.NoError(t, e)
-	assert.True(t, ok)
-	assert.Equal(t, result_id < 122878513, true, "must smaller 122878513")
+// 	results := sCond.ToMapInfs(records)
 
-}
+// 	result_id, ok := results[0]["id"].(uint64)
 
-func Test_SearcherFindAll(t *testing.T) {
+// 	assert.NoError(t, e)
+// 	assert.True(t, ok)
+// 	assert.True(t, 1164 <= len(results))
+// 	assert.Equal(t, result_id > 4568788719, true, "must bigger 4568788719")
 
-	//vfs.LogWriter = DiscardString{}
+// 	records = sCond.Searcher().Select(func(m vfs.Match) bool {
+// 		v := m.Get("id").(uint64)
+// 		return v < 122878513
+// 	}).All()
+// 	results = sCond.ToMapInfs(records)
 
-	idx, e := OpenIndexer()
+// 	result_id, ok = results[0]["id"].(uint64)
+// 	assert.NoError(t, e)
+// 	assert.True(t, ok)
+// 	assert.True(t, 3 <= len(results))
+// 	assert.Equal(t, result_id < 122878513, true, "must smaller 122878513")
+// 	sCond.CancelAndWait()
 
-	sCond := idx.On("test", vfs.ReaderColumn("id"), vfs.Output(vfs.MapInfOutput))
-
-	records := sCond.Searcher().Select(func(m vfs.Match) bool {
-		v := m.Get("id").(uint64)
-		return v > 4568788719
-	}).All()
-
-	results := sCond.ToMapInfs(records)
-
-	result_id, ok := results[0]["id"].(uint64)
-
-	assert.NoError(t, e)
-	assert.True(t, ok)
-	assert.True(t, 1164 <= len(results))
-	assert.Equal(t, result_id > 4568788719, true, "must bigger 4568788719")
-
-	records = sCond.Searcher().Select(func(m vfs.Match) bool {
-		v := m.Get("id").(uint64)
-		return v < 122878513
-	}).All()
-	results = sCond.ToMapInfs(records)
-
-	result_id, ok = results[0]["id"].(uint64)
-	assert.NoError(t, e)
-	assert.True(t, ok)
-	assert.True(t, 3 <= len(results))
-	assert.Equal(t, result_id < 122878513, true, "must smaller 122878513")
-	sCond.CancelAndWait()
-
-}
+// }
 
 func Test_SearchStringAll(t *testing.T) {
 	vfs.CurrentLogLoevel = vfs.LOG_WARN
 
 	idx, e := OpenIndexer()
-	sval := vfs.SearchVal("逆突き")
 
 	sCond := idx.On("test", vfs.ReaderColumn("name"), vfs.Output(vfs.MapInfOutput))
 
-	info := sCond.Searcher().Select(func(m vfs.Match) bool {
-		return m.Uint64("name") <= sval
-	}).Select(func(m vfs.Match) bool {
-		return m.Uint64("name") >= sval
-	})
+	matches := sCond.Select(func(cond vfs.SearchCondElem) bool {
+		return cond.Op("name", "==", "無門会")
+	}).All()
 
-	matches := info.All()
 	assert.NoError(t, e)
 	assert.True(t, 0 < len(matches))
 
-	matches2 := sCond.Searcher().Match("ロシア人").All()
+	matches2 := sCond.Match("ロシア人").All()
 
 	//result_id, ok := results[0]["id"].(uint64)
 	//idx.Cols["name"].CancelAndWait()
@@ -177,10 +153,11 @@ func Test_SearchSmallString(t *testing.T) {
 	idx, e := OpenIndexer()
 
 	sCond := idx.On("test", vfs.ReaderColumn("name"), vfs.Output(vfs.MapInfOutput))
-	matches := sCond.Searcher().Match("無門").All()
+	matches := sCond.Match("無門").All()
 
 	assert.NoError(t, e)
-	assert.True(t, 0 < len(matches))
+	//assert.True(t, 0 < len(matches))
+	assert.True(t, 0 == len(matches))
 	sCond.CancelAndWait()
 }
 
@@ -191,13 +168,12 @@ func Test_SearchQueryt(t *testing.T) {
 	q, _ := expr.GetExpr(qstr)
 
 	sCond := idx.On("test", vfs.ReaderColumn(q.Column), vfs.Output(vfs.MapInfOutput))
-	matches := sCond.Searcher().Query(qstr).All()
-	results := sCond.ToMapInfs(matches)
+	results := sCond.Query(qstr).All()
 
 	expected := interface{}(uint64(130988471))
 	assert.NoError(t, e)
 	assert.True(t, 0 < len(results))
-	assert.Equal(t, expected, results[0]["id"])
+	assert.Equal(t, expected, results[0].(map[string]interface{})["id"])
 	sCond.CancelAndWait()
 }
 
@@ -208,8 +184,7 @@ func Test_SearchQueryString(t *testing.T) {
 	q, _ := expr.GetExpr(qstr)
 
 	sCond := idx.On("test", vfs.ReaderColumn(q.Column), vfs.Output(vfs.MapInfOutput))
-	matches := sCond.Searcher().Query(qstr).All()
-	results := sCond.ToMapInfs(matches)
+	results := sCond.Query(qstr).All()
 
 	//expected := interface{}(uint64(130988471))
 	assert.NoError(t, e)
@@ -284,11 +259,11 @@ func TestAddingDir(t *testing.T) {
 func TestMerge(t *testing.T) {
 	vfs.CurrentLogLoevel = vfs.LOG_WARN
 	idx, e := vfs.Open("/Users/xtakei/git/vfs-index/example/data",
-		vfs.RootDir("/Users/xtakei/git/vfs-index/example/vfs-tmp"))
+		vfs.RootDir("/Users/xtakei/git/vfs-index/example/vfs-tmp"), vfs.MergeDuration(10*time.Second))
 
 	sCond := idx.On("test", vfs.ReaderColumn("id"), vfs.MergeOnSearch(true))
 	sCond.Searcher()
-	time.Sleep(1 * time.Minute)
+	time.Sleep(10 * time.Second)
 	sCond.CancelAndWait()
 	assert.Equal(t, 1, 1)
 	assert.NoError(t, e)

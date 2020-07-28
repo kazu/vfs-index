@@ -1,6 +1,10 @@
 package vfsindex
 
-var Opt optionState
+import "time"
+
+var Opt optionState = optionState{
+	mergeDuration: 1 * time.Minute,
+}
 
 type optionState struct {
 	column           string
@@ -8,6 +12,7 @@ type optionState struct {
 	rootDir          string
 	idxMergeOnSearch bool
 	cntConcurrent    int
+	mergeDuration    time.Duration
 }
 
 //type ReaderOpt map[string]string
@@ -58,5 +63,11 @@ func MergeOnSearch(enable bool) Option {
 func RegitConcurrent(n int) Option {
 	return func(opt *optionState) {
 		opt.cntConcurrent = n
+	}
+}
+
+func MergeDuration(d time.Duration) Option {
+	return func(opt *optionState) {
+		opt.mergeDuration = d
 	}
 }

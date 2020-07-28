@@ -9,9 +9,7 @@ import (
 
 	flatbuffers "github.com/google/flatbuffers/go"
 	"github.com/kazu/vfs-index/vfs_schema"
-
 	//"/github.com/kazu/loncha"
-	"time"
 )
 
 func Hoge() bool {
@@ -86,7 +84,7 @@ func (idx *Indexer) Regist(table, col string) error {
 
 	idxCol := idx.OpenCol(flist, table, col)
 	_ = idxCol
-	idxCol.Update(1 * time.Minute)
+	idxCol.Update(Opt.mergeDuration)
 	idx.Cols[col] = idxCol
 
 	return err

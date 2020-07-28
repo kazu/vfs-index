@@ -82,6 +82,32 @@ func (f *IndexFile) Init() {
 	}
 }
 
+// func (f *IndexFile) Select(asc bool) (result []*IndexFile) {
+
+// 	names, err := readDirNames(f.Path)
+// 	if err != nil {
+// 		return nil
+// 	}
+// 	if !asc {
+// 		sort.Slice(names, func(i, j int) bool {
+// 			return names[i] > names[i]
+// 		})
+// 	}
+// 	afters := []*IndexFile{}
+
+// 	for _, name := range names {
+// 		f := NewIndexFile(f.c, filepath.Join(f.Path, name))
+// 		f.Init()
+
+// 		if f.IsType(IdxFileType_NoComplete) {
+// 			continue
+// 		}
+// 		if f.IsType(IdxFileType_Write) {
+// 			afters = append(result, f)
+// 			continue
+// 		}
+// }
+
 // First ... Find first IndexFile.
 func (f *IndexFile) First() *IndexFile {
 
@@ -265,7 +291,7 @@ func readDirNames(dirname string) ([]string, error) {
 	return names, nil
 }
 
-func (f *IndexFile) FindByKey(key uint64) *IndexFile {
+func (f *IndexFile) FindByKey(key uint64) (result []*IndexFile) {
 
 	c := f.c
 	if filepath.Join(Opt.rootDir, c.TableDir()) != f.Path {
@@ -281,13 +307,15 @@ func (f *IndexFile) FindByKey(key uint64) *IndexFile {
 	//fmt.Printf("%s\n", path)
 	paths, _ := filepath.Glob(fmt.Sprintf("%s.*.*", pat))
 	if len(paths) > 0 {
-		path := paths[0]
-		matchfile := NewIndexFile(c, path)
-		matchfile.Init()
-		return matchfile
+		for _, path := range paths {
+			matchfile := NewIndexFile(c, path)
+			matchfile.Init()
+			result = append(result, matchfile)
+		}
+		return
 	}
 
-	return f.findAllFromMergeIdx(key)
+	return []*IndexFile{f.findAllFromMergeIdx(key)}
 
 }
 

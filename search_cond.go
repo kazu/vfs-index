@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/kazu/fbshelper/query/base"
 	"github.com/kazu/loncha"
 	"github.com/kazu/vfs-index/expr"
 	"github.com/kazu/vfs-index/query"
@@ -584,7 +585,7 @@ func (info *SearchInfo) Copy() *SearchInfo {
 
 type SearchFinder struct {
 	c       *Column
-	idx     *IndexFile
+	idxs    []*IndexFile
 	mode    SearchMode
 	start   uint64
 	last    uint64
@@ -646,29 +647,29 @@ func (cond *SearchCond) findBy(col string, keys []uint64) (sinfo *SearchFinder) 
 	}
 
 	key2searchFinder := func(key uint64) *SearchFinder {
-		idx := idxFinder.FindByKey(key)
-		if idx == nil {
+		idxs := idxFinder.FindByKey(key)
+		if len(idxs) == 0 {
 			return nil
 		}
-		if idx.IsType(IdxFileType_Write) {
+		if idxs[0].IsType(IdxFileType_Write) {
 			return &SearchFinder{
 				c:     c,
-				idx:   idx,
+				idxs:  idxs,
 				mode:  SEARCH_ALL,
 				start: key,
 				last:  key,
 			}
 		}
 
-		if idx.IsType(IdxFileType_Merge) {
-			if idx.KeyRecords().Find(func(kr *query.KeyRecord) bool {
+		if idxs[0].IsType(IdxFileType_Merge) {
+			if idxs[0].KeyRecords().Find(func(kr *query.KeyRecord) bool {
 				return kr.Key().Uint64() == key
 			}) == nil {
 				return nil
 			}
 			return &SearchFinder{
 				c:     c,
-				idx:   idx,
+				idxs:  idxs,
 				mode:  SEARCH_ALL,
 				start: key,
 				last:  key,
@@ -688,6 +689,14 @@ func (cond *SearchCond) findBy(col string, keys []uint64) (sinfo *SearchFinder) 
 		}
 		sinfo = sinfo.And(sinfo2)
 	}
+	if sinfo == nil {
+		return &SearchFinder{
+			isEmpty: true,
+		}
+	}
+	if len(sinfo.matches) == 0 && len(keys) > 1 {
+		sinfo.isEmpty = true
+	}
 	return sinfo
 }
 
@@ -701,6 +710,7 @@ const (
 func (f *SearchCond) Query(s string) (r *SearchFinder) {
 	q, err := expr.GetExpr(s)
 	c := f.idxCol
+	c.IsNum = c.IsNumViaIndex()
 
 	if err != nil {
 		return EmptySearchFinder()
@@ -710,9 +720,18 @@ func (f *SearchCond) Query(s string) (r *SearchFinder) {
 		return f.FindBy(q.Column, q.Value)
 	}
 	if q.Op == "==" {
+		if f.idxCol.IsNum {
+			uintVal, _ := strconv.ParseUint(q.Value, 10, 64)
+			return f.FindBy(q.Column, uintVal)
+		}
 		return f.FindBy(q.Column, q.Value)
 	}
 	return EmptySearchFinder()
+}
+
+func (f *SearchCond) Match(s string) *SearchFinder {
+	c := f.idxCol
+	return f.FindBy(c.Name, s)
 }
 
 func (cond *SearchCond) Select(fn func(SearchCondElem) bool) (sinfo *SearchFinder) {
@@ -725,7 +744,7 @@ func (cond *SearchCond) Select(fn func(SearchCondElem) bool) (sinfo *SearchFinde
 
 	sinfo = &SearchFinder{
 		c:     c,
-		idx:   idxFinder,
+		idxs:  []*IndexFile{idxFinder},
 		start: first.IdxInfo().first,
 		last:  last.IdxInfo().last,
 		mode:  SEARCH_INIT,
@@ -835,19 +854,24 @@ func (cond *SearchCond) Column() *Column {
 
 func (s *SearchFinder) KeyRecord() *query.KeyRecord {
 
-	if s.idx.IsType(IdxFileType_Write) {
+	if s.idxs[0].IsType(IdxFileType_Write) {
 		kr := query.NewKeyRecord()
 		kr.SetKey(query.FromUint64(s.start))
 		rlist := query.NewRecordList()
-		rlist.SetAt(0, s.idx.KeyRecord().Value())
+		rlist.Base = base.NewNoLayer(rlist.Base)
+		for i := range s.idxs {
+			r := s.idxs[i].KeyRecord().Value()
+			rlist.SetAt(i, r)
+		}
 		kr.SetRecords(rlist.CommonNode)
+
 		kr.Flatten()
 		return kr
 	}
 
-	if s.idx.IsType(IdxFileType_Merge) {
-		s.idx.KeyRecords()
-		kr := s.idx.KeyRecords().Find(func(kr *query.KeyRecord) bool {
+	if s.idxs[0].IsType(IdxFileType_Merge) {
+		//s.idx.KeyRecords()
+		kr := s.idxs[0].KeyRecords().Find(func(kr *query.KeyRecord) bool {
 			return kr.Key().Uint64() == s.start
 		})
 		return kr
@@ -865,6 +889,7 @@ func (s *SearchFinder) Records() []*query.Record {
 	if kr == nil {
 		return nil
 	}
+
 	return kr.Records().All()
 }
 
@@ -875,18 +900,19 @@ func (s1 *SearchFinder) And(s2 *SearchFinder) (s *SearchFinder) {
 		mode:    s1.mode,
 		matches: s1.Records(),
 	}
-	last_match := 0
+	//last_match := 0
+
 	records2 := s2.Records()
 	ret, err := loncha.Select(&s.matches, func(j int) bool {
-		for i := last_match; i < len(records2); i++ {
+		for i := 0; i < len(records2); i++ {
 			r1 := s.matches[j]
 			r2 := records2[i]
 			if r1.FileId().Uint64() == r2.FileId().Uint64() {
-				last_match = i + 1
+				//last_match = i + 1
 				return true
 			}
 		}
-		last_match = len(records2) - 1
+		//last_match = len(records2) - 1
 		return false
 	})
 	if err != nil {
