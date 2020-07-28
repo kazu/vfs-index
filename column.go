@@ -222,6 +222,29 @@ func (c *Column) cancelAndWait() {
 	}
 }
 
+func (c *Column) getIdxWriter() IdxWriter {
+
+	var idxWriter IdxWriter
+
+	if !c.IsNum {
+		idxWriter = IdxWriter{
+			IsNum: false,
+			ValueEncoder: func(r *Record) (results []string) {
+				//return []string{toFname(r.Uint64Value(c))}
+				return EncodeTri(r.StrValue(c))
+			},
+		}
+	} else {
+		idxWriter = IdxWriter{
+			IsNum: true,
+			ValueEncoder: func(r *Record) (results []string) {
+				return []string{toFname(r.Uint64Value(c))}
+			},
+		}
+	}
+	return idxWriter
+}
+
 func (c *Column) MergingIndex(ctx context.Context) error {
 
 	var idxWriter IdxWriter
@@ -354,6 +377,10 @@ func (c *Column) IsNumViaIndex() bool {
 	}
 	return true
 
+}
+
+func (c *Column) Path() string {
+	return ColumnPath(c.TableDir(), c.Name, c.IsNum)
 }
 
 func (c *Column) OldIsNumViaIndex() bool {

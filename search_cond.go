@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/kazu/loncha"
 	"github.com/kazu/vfs-index/expr"
@@ -103,12 +102,12 @@ func SearchVal(s string) uint64 {
 
 func (cond *SearchCond) startCol(col string) {
 	cond.idxCol = cond.idx.OpenCol(cond.flist, cond.table, col)
-	e := cond.idxCol.caching()
-	if e != nil {
-		cond.flist.Reload()
-		cond.idxCol.Update(1 * time.Minute)
-		cond.idxCol.caching()
-	}
+	// e := cond.idxCol.caching()
+	// if e != nil {
+	// 	cond.flist.Reload()
+	// 	cond.idxCol.Update(1 * time.Minute)
+	// 	cond.idxCol.caching()
+	// }
 	cond.column = col
 }
 
@@ -581,4 +580,378 @@ func (info *SearchInfo) Copy() *SearchInfo {
 	sinfo.s.low = sinfo.befores[0].start
 	sinfo.s.high = sinfo.befores[0].end
 	return sinfo
+}
+
+type SearchFinder struct {
+	c       *Column
+	idx     *IndexFile
+	mode    SearchMode
+	start   uint64
+	last    uint64
+	matches []*query.Record
+	isEmpty bool
+}
+
+func EmptySearchFinder() *SearchFinder {
+
+	return &SearchFinder{
+		isEmpty: true,
+	}
+}
+
+func TriKeys(s string) (result []uint64) {
+
+	//	var strs []string
+
+	if len([]rune(s)) > 2 {
+		result = make([]uint64, 0, len([]rune(s))-2)
+		//strs = make([]string, 0. len([]rune(s)) -2)
+	} else {
+		result = make([]uint64, 0, 3)
+		//strs = make([]string, 0. 3)
+	}
+
+	strs := EncodeTri(s)
+
+	for _, str := range strs {
+		val, _ := strconv.ParseUint(str, 16, 64)
+		result = append(result, val)
+	}
+
+	return
+
+}
+
+func (cond *SearchCond) FindBy(col string, kInf interface{}) (sinfo *SearchFinder) {
+
+	var keys []uint64
+	switch k := kInf.(type) {
+	case uint64:
+		keys = append(keys, k)
+	case string:
+		keys = TriKeys(k)
+	}
+
+	return cond.findBy(col, keys)
+}
+
+func (cond *SearchCond) findBy(col string, keys []uint64) (sinfo *SearchFinder) {
+
+	c := cond.idxCol
+	idxFinder := OpenIndexFile(c)
+
+	if c.Name != col {
+		// FIXME: findAll()
+		return EmptySearchFinder()
+	}
+
+	key2searchFinder := func(key uint64) *SearchFinder {
+		idx := idxFinder.FindByKey(key)
+		if idx == nil {
+			return nil
+		}
+		if idx.IsType(IdxFileType_Write) {
+			return &SearchFinder{
+				c:     c,
+				idx:   idx,
+				mode:  SEARCH_ALL,
+				start: key,
+				last:  key,
+			}
+		}
+
+		if idx.IsType(IdxFileType_Merge) {
+			if idx.KeyRecords().Find(func(kr *query.KeyRecord) bool {
+				return kr.Key().Uint64() == key
+			}) == nil {
+				return nil
+			}
+			return &SearchFinder{
+				c:     c,
+				idx:   idx,
+				mode:  SEARCH_ALL,
+				start: key,
+				last:  key,
+			}
+		}
+		return nil
+	}
+
+	for _, key := range keys {
+		sinfo2 := key2searchFinder(key)
+		if sinfo2 == nil {
+			return EmptySearchFinder()
+		}
+		if sinfo == nil {
+			sinfo = sinfo2
+			continue
+		}
+		sinfo = sinfo.And(sinfo2)
+	}
+	return sinfo
+}
+
+const (
+	KeyStateGot int = 1
+	// KeyStateRun int = 2
+	// KeyStateFlase int = 3
+	KeyStateFinish int = 4
+)
+
+func (f *SearchCond) Query(s string) (r *SearchFinder) {
+	q, err := expr.GetExpr(s)
+	c := f.idxCol
+
+	if err != nil {
+		return EmptySearchFinder()
+	}
+
+	if q.Op == "search" && c.Name == q.Column && !c.IsNum {
+		return f.FindBy(q.Column, q.Value)
+	}
+	if q.Op == "==" {
+		return f.FindBy(q.Column, q.Value)
+	}
+	return EmptySearchFinder()
+}
+
+func (cond *SearchCond) Select(fn func(SearchCondElem) bool) (sinfo *SearchFinder) {
+
+	c := cond.idxCol
+	idxFinder := OpenIndexFile(c) // c.TableDir()) //, c.Name, c.IsNumViaIndex()))
+	//_ = idxFinder
+	first := idxFinder.First()
+	last := idxFinder.Last()
+
+	sinfo = &SearchFinder{
+		c:     c,
+		idx:   idxFinder,
+		start: first.IdxInfo().first,
+		last:  last.IdxInfo().last,
+		mode:  SEARCH_INIT,
+	}
+	frec := first.FirstRecord()
+	frec.caching(c)
+	lrec := last.LastRecord()
+	lrec.caching(c)
+
+	keys := []uint64{}
+
+	keyState := make(chan int, 2)
+
+	setKey := func(origk interface{}) []uint64 {
+		switch k := origk.(type) {
+		case uint64:
+			keys = append(keys, k)
+		case int:
+			keys = append(keys, uint64(k))
+		case string:
+			keys = append(keys, TriKeys(k)...)
+		}
+		keyState <- KeyStateGot
+		return keys
+	}
+	getCol := func() *Column {
+		return cond.idxCol
+	}
+
+	gotVal := func(col string) *SearchFinder {
+		sinfo = cond.findBy(col, keys)
+		return sinfo
+	}
+
+	econd := SearchCondElem{setKey: setKey, Column: getCol, getValue: gotVal}
+
+	var isTrue bool
+	go func(cond SearchCondElem) {
+		isTrue = fn(cond)
+		keyState <- KeyStateFinish
+	}(econd)
+
+	for {
+		state, ok := <-keyState
+		if !ok || state == KeyStateFinish {
+			break
+		}
+	}
+
+	if isTrue {
+		return
+	}
+
+	return EmptySearchFinder()
+}
+
+type SetKey func(interface{}) []uint64
+type GetCol func() *Column
+type GetValue func(col string) *SearchFinder
+type SearchCondElem struct {
+	setKey   SetKey
+	Column   GetCol
+	getValue GetValue
+}
+
+func (cond SearchCondElem) Op(col, op string, v interface{}) (result bool) {
+
+	if col != cond.Column().Name {
+		return false
+	}
+
+	if op != "==" {
+		return false
+	}
+
+	keys := cond.setKey(v)
+	_ = keys
+	finder := cond.getValue(col)
+
+	return finder != nil
+
+	// DoneCh := make(chan bool , 2)
+
+	// go func() {
+	// 	for {
+	// 		s, ok := <- keyState
+	// 		if !ok {
+	// 			DoneCh <- false
+	// 			return
+	// 		}
+	// 		if s != KeyStateRun {
+	// 			keyState <- s
+	// 			continue
+	// 		}
+	// 		break
+	// 	}
+	// 	// ここで処理?
+
+	// 	DonCh <- true
+	// }
+
+}
+
+func (cond *SearchCond) Column() *Column {
+	return cond.idxCol
+}
+
+func (s *SearchFinder) KeyRecord() *query.KeyRecord {
+
+	if s.idx.IsType(IdxFileType_Write) {
+		kr := query.NewKeyRecord()
+		kr.SetKey(query.FromUint64(s.start))
+		rlist := query.NewRecordList()
+		rlist.SetAt(0, s.idx.KeyRecord().Value())
+		kr.SetRecords(rlist.CommonNode)
+		kr.Flatten()
+		return kr
+	}
+
+	if s.idx.IsType(IdxFileType_Merge) {
+		s.idx.KeyRecords()
+		kr := s.idx.KeyRecords().Find(func(kr *query.KeyRecord) bool {
+			return kr.Key().Uint64() == s.start
+		})
+		return kr
+	}
+	return nil
+}
+
+func (s *SearchFinder) Records() []*query.Record {
+
+	if len(s.matches) > 0 {
+		return s.matches
+	}
+
+	kr := s.KeyRecord()
+	if kr == nil {
+		return nil
+	}
+	return kr.Records().All()
+}
+
+func (s1 *SearchFinder) And(s2 *SearchFinder) (s *SearchFinder) {
+
+	s = &SearchFinder{
+		c:       s1.c,
+		mode:    s1.mode,
+		matches: s1.Records(),
+	}
+	last_match := 0
+	records2 := s2.Records()
+	ret, err := loncha.Select(&s.matches, func(j int) bool {
+		for i := last_match; i < len(records2); i++ {
+			r1 := s.matches[j]
+			r2 := records2[i]
+			if r1.FileId().Uint64() == r2.FileId().Uint64() {
+				last_match = i + 1
+				return true
+			}
+		}
+		last_match = len(records2) - 1
+		return false
+	})
+	if err != nil {
+		s.matches = nil
+	}
+	s.matches = ret.([]*query.Record)
+
+	return s
+}
+
+func (s1 *SearchFinder) All(opts ...ResultOpt) []interface{} {
+	if s1.isEmpty {
+		return nil
+	}
+	opts = append(opts, ResultOutput(""))
+
+	result := []interface{}{}
+	for _, rec := range s1.Records() {
+		result = append(result, opts[0](s1.c, rec))
+	}
+
+	return result
+}
+
+func (s1 *SearchFinder) First(opts ...ResultOpt) interface{} {
+	if s1.isEmpty {
+		return nil
+	}
+	opts = append(opts, ResultOutput(""))
+	recs := s1.Records()
+	if recs == nil {
+		return nil
+	}
+	return opts[0](s1.c, recs[0])
+}
+
+func (s1 *SearchFinder) Last(opts ...ResultOpt) interface{} {
+	if s1.isEmpty {
+		return nil
+	}
+	opts = append(opts, ResultOutput(""))
+	recs := s1.Records()
+	if recs == nil {
+		return nil
+	}
+	return opts[0](s1.c, recs[len(recs)-1])
+}
+
+type ResultOpt func(*Column, *query.Record) interface{}
+
+func ResultOutput(name string) ResultOpt {
+
+	return func(c *Column, rec *query.Record) interface{} {
+		r := &Record{
+			fileID: rec.FileId().Uint64(),
+			offset: rec.Offset().Int64(),
+			size:   rec.Size().Int64(),
+		}
+		r.caching(c)
+		if name == "json" {
+			fname, _ := c.Flist.FPath(r.fileID)
+			enc, _ := GetDecoder(fname)
+			raw, _ := enc.Encoder(r.cache)
+			return string(raw)
+		}
+		return r.cache
+	}
 }

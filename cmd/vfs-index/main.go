@@ -86,6 +86,7 @@ func main() {
 
 func indexing(indexDir, column, table, dir string) {
 	vfs.CurrentLogLoevel = vfs.LOG_WARN
+	//vfs.CurrentLogLoevel = vfs.LOG_DEBUG
 
 	cur, _ := os.Getwd()
 	opt := vfs.RootDir(filepath.Join(cur, indexDir))
@@ -100,8 +101,7 @@ func indexing(indexDir, column, table, dir string) {
 
 func merge(indexDir, column, table, dir string) {
 	vfs.CurrentLogLoevel = vfs.LOG_WARN
-
-	//vfs.CurrentLogLoevel = vfs.LOG_ERROR
+	//vfs.CurrentLogLoevel = vfs.LOG_DEBUG
 
 	cur, _ := os.Getwd()
 	opt := vfs.RootDir(filepath.Join(cur, indexDir))
@@ -135,19 +135,28 @@ func search(query, indexDir, column, table, dir string, first, nomerge bool) {
 
 	//ival, e := strconv.ParseUint(query, 10, 64)
 
-	var info *vfs.SearchInfo
-
 	sCond := idx.On(table, vfs.ReaderColumn(column), vfs.MergeOnSearch(!nomerge))
-	info = sCond.Searcher().Query(query)
+	//info = sCond.Query(query)
 
 	if first {
-		result := sCond.ToJsonStr(info.First())
+		result := sCond.Query(query).First(vfs.ResultOutput("json"))
 		fmt.Printf("%s\n", result)
 	} else {
-		results := sCond.ToJsonStrs(info.All())
+		results := sCond.Query(query).All(vfs.ResultOutput("json"))
 		for _, result := range results {
 			fmt.Printf("%s\n", result)
 		}
 	}
 	sCond.CancelAndWait()
+
+	// if first {
+	// 	result := sCond.ToJsonStr(info.First())
+	// 	fmt.Printf("%s\n", result)
+	// } else {
+	// 	results := sCond.ToJsonStrs(info.All())
+	// 	for _, result := range results {
+	// 		fmt.Printf("%s\n", result)
+	// 	}
+	// }
+	//sCond.CancelAndWait()
 }
