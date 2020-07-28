@@ -142,3 +142,43 @@ func Test_SearchCondQuery_FirstGram(t *testing.T) {
 	assert.NoError(t, e)
 	assert.True(t, len(str) > 0)
 }
+
+func Test_IndexFile_Select(t *testing.T) {
+
+	CurrentLogLoevel = LOG_WARN
+	idx, e := Open("/Users/xtakei/git/vfs-index/example/data",
+		RootDir("/Users/xtakei/git/vfs-index/example/vfs-tmp"))
+
+	sCond := idx.On("test", ReaderColumn("id"), MergeOnSearch(true))
+
+	c := sCond.Column()
+	finder := OpenIndexFile(c)
+
+	matches := []*IndexFile{}
+
+	e = finder.Select(
+		OptAsc(true),
+		OptCcondFn(func(f *IndexFile) CondType {
+			if f.IsType(IdxFileType_NoComplete) {
+				return CondSkip
+			} else if f.IsType(IdxFileType_Merge) {
+				return CondSkip
+			} else if f.IsType(IdxFileType_Dir) {
+				return CondLazy
+			}
+
+			return CondTrue
+		}),
+		OptTraverse(func(f *IndexFile) error {
+			matches = append(matches, f)
+			if len(matches) == 100 {
+				return ErrStopTraverse
+			}
+			return nil
+		}),
+	)
+
+	assert.Error(t, e)
+	assert.True(t, len(matches) == 100)
+
+}

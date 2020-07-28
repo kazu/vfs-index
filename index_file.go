@@ -18,6 +18,7 @@ const (
 	IdxFileType_Dir  IndexFileType = 1 << iota
 	IdxFileType_Merge
 	IdxFileType_Write
+	IdxFileType_MyColum
 	IdxFileType_NoComplete
 )
 
@@ -82,31 +83,105 @@ func (f *IndexFile) Init() {
 	}
 }
 
-// func (f *IndexFile) Select(asc bool) (result []*IndexFile) {
+type SelectOpt struct {
+	asc      bool
+	cond     CondFn
+	traverse TraverseFn
+}
 
-// 	names, err := readDirNames(f.Path)
-// 	if err != nil {
-// 		return nil
-// 	}
-// 	if !asc {
-// 		sort.Slice(names, func(i, j int) bool {
-// 			return names[i] > names[i]
-// 		})
-// 	}
-// 	afters := []*IndexFile{}
+type SelectOption func(*SelectOpt)
+type CondType byte
+type TraverseFn func(f *IndexFile) error
+type CondFn func(f *IndexFile) CondType
 
-// 	for _, name := range names {
-// 		f := NewIndexFile(f.c, filepath.Join(f.Path, name))
-// 		f.Init()
+const (
+	CondTrue CondType = iota
+	CondSkip
+	CondFalse
+	CondLazy
+)
 
-// 		if f.IsType(IdxFileType_NoComplete) {
-// 			continue
-// 		}
-// 		if f.IsType(IdxFileType_Write) {
-// 			afters = append(result, f)
-// 			continue
-// 		}
-// }
+func OptCcondFn(c CondFn) SelectOption {
+	return func(opt *SelectOpt) {
+		opt.cond = c
+	}
+}
+
+func OptAsc(isAsc bool) SelectOption {
+	return func(opt *SelectOpt) {
+		opt.asc = isAsc
+	}
+}
+func OptTraverse(fn TraverseFn) SelectOption {
+
+	return func(opt *SelectOpt) {
+		opt.traverse = fn
+	}
+
+}
+
+func (opt *SelectOpt) Merge(opts []SelectOption) {
+	for i := range opts {
+		opts[i](opt)
+	}
+}
+
+func (f *IndexFile) Select(opts ...SelectOption) (err error) {
+	opt := SelectOpt{}
+	opt.Merge(opts)
+
+	names, err := readDirNames(f.Path)
+	if !opt.asc {
+		sort.Slice(names, func(i, j int) bool {
+			return i > j
+		})
+	}
+
+	afters := []*IndexFile{}
+
+	for _, name := range names {
+		f := NewIndexFile(f.c, filepath.Join(f.Path, name))
+		f.Init()
+		switch opt.cond(f) {
+		case CondSkip:
+			continue
+		case CondFalse:
+			continue
+		case CondLazy:
+			afters = append(afters, f)
+		case CondTrue:
+			e := opt.traverse(f)
+			if e != nil {
+				err = e
+				goto FINISH
+			}
+			// e = f.Select(opts...)
+			// if e != nil {
+			// 	err = e
+			// 	goto FINISH
+			// }
+		}
+	}
+
+	if len(afters) > 0 {
+		for _, f := range afters {
+			// e := opt.traverse(f)
+			// if e != nil {
+			// 	err = e
+			// 	break
+			// }
+			e := f.Select(opts...)
+			if e != nil {
+				err = e
+				break
+			}
+
+		}
+	}
+
+FINISH:
+	return
+}
 
 // First ... Find first IndexFile.
 func (f *IndexFile) First() *IndexFile {
@@ -191,7 +266,6 @@ func (f *IndexFile) Last() *IndexFile {
 				return r
 			}
 		}
-
 	}
 	return nil
 
