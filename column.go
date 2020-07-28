@@ -383,28 +383,6 @@ func (c *Column) Path() string {
 	return ColumnPath(c.TableDir(), c.Name, c.IsNum)
 }
 
-func (c *Column) OldIsNumViaIndex() bool {
-
-	path := ColumnPath(c.TableDir(), c.Name, true)
-	pat := fmt.Sprintf("%s*", path)
-	Log(LOG_WARN, "finding %s files\n", pat)
-	idxfiles := paraGlob(pat)
-	_, ok := <-idxfiles
-	if !ok {
-		path = ColumnPath(c.TableDir()+"/"+AddingDir("*", 4), c.Name, true)
-		pat = fmt.Sprintf("%s*", path)
-		Log(LOG_WARN, "finding %s files\n", pat)
-		idxfiles = paraGlob(pat)
-		_, ok := <-idxfiles
-		if !ok {
-			Log(LOG_WARN, "not found %s files\n", pat)
-			return false
-		}
-		Log(LOG_WARN, "found %s files\n", pat)
-	}
-	return true
-}
-
 func (c *Column) loadIndex() error {
 	if c.IsNumViaIndex() {
 		c.IsNum = true
