@@ -210,3 +210,64 @@ func Test_Recrod_ToFbs(t *testing.T) {
 		root.Index().InvertedMapNum().Key().Uint64())
 
 }
+
+func Test_IndexFile_parentWith(t *testing.T) {
+
+	CurrentLogLoevel = LOG_DEBUG
+	idx, _ := Open("/Users/xtakei/git/vfs-index/example/data",
+		RootDir("/Users/xtakei/git/vfs-index/example/vfs-tmp"))
+
+	sCond := idx.On("test", ReaderColumn("name"), MergeOnSearch(false))
+
+	c := sCond.Column()
+
+	f1 := NewIndexFile(c, "example/vfs-tmp/test/9060/304f/308d/name.gram.idx.9060304f308d-9060304f308d.00014829a5.00000346db")
+	f1.Init()
+
+	f2 := NewIndexFile(c, "example/vfs-tmp/test/9060/0029/0020/name.gram.idx.906000290020-906000290020.00014829a5.0000003bfa")
+	f2.Init()
+
+	f3 := f1.parentWith(f2)
+
+	assert.Equal(t, f3.Path, "example/vfs-tmp/test/9060")
+
+	d := NewIndexFile(c, f3.Path)
+	d.Init()
+
+	childs := d.childs(IdxFileType_Dir)
+	assert.True(t, len(childs) > 0)
+
+	// m := f2.middle(f1)
+	// _ = m
+	// assert.True(t, len(childs) > 0)
+
+	tests := []struct {
+		path1 string
+		path2 string
+	}{
+		{
+			"example/vfs-tmp/test/0045/0058/0020/name.gram.idx.004500580020-004500580020.00014829a5.0000042963",
+			"example/vfs-tmp/test/ff5e/9ed2/30ae/name.gram.idx.ff5e9ed230ae-ff5e9ed230ae.00014829a5.0000035c6f",
+		},
+		{
+			"example/vfs-tmp/test/0049/0043/0020/name.gram.idx.004900430020-004900430020.00014829a5.000001107a",
+			"example/vfs-tmp/test/004c/7248/005d/name.gram.idx.004c7248005d-004c7248005d.00014829a5.0000042633",
+		},
+		{
+			"example/vfs-tmp/test/0049/0043/0020/name.gram.idx.004900430020-004900430020.00014829a5.000000fd15",
+			"example/vfs-tmp/test/0058/30c1/30e3/name.gram.idx.005830c130e3-005830c130e3.00014829a5.000003b8e3",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run("middle "+tt.path1, func(t *testing.T) {
+			f1 := NewIndexFile(c, tt.path1)
+			f1.Init()
+			f2 := NewIndexFile(c, tt.path2)
+			f2.Init()
+			m := f1.middle(f2)
+			assert.NotNil(t, m)
+		})
+	}
+
+}

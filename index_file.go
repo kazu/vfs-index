@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/kazu/loncha"
+
 	"github.com/kazu/vfs-index/query"
 )
 
@@ -462,4 +464,145 @@ func (f *IndexFile) findAllFromMergeIdx(key uint64) *IndexFile {
 
 	return nil
 
+}
+
+func (f *IndexFile) parentWith(t *IndexFile) *IndexFile {
+
+	size := len(f.Path)
+	if size > len(t.Path) {
+		size = len(t.Path)
+	}
+
+	for i := 0; i < size; i++ {
+		if f.Path[i] != t.Path[i] {
+			return NewIndexFile(f.c, filepath.Dir(f.Path[:i]))
+		}
+	}
+
+	return NewIndexFile(f.c, f.Path[:size])
+}
+
+func (f *IndexFile) childs(t IndexFileType) (cDirs []*IndexFile) {
+
+	names, err := readDirNames(f.Path)
+
+	if err != nil {
+		return nil
+	}
+	names = sortAlphabet(names)
+
+	cDirs = make([]*IndexFile, 0, len(names))
+
+	for i := range names {
+		c := NewIndexFile(f.c, filepath.Join(f.Path, names[i]))
+		c.Init()
+		cDirs = append(cDirs, c)
+	}
+
+	loncha.Delete(&cDirs, func(i int) bool {
+		return !cDirs[i].IsType(t) || cDirs[i].IsType(IdxFileType_NoComplete)
+	})
+	return cDirs
+}
+
+func (l *IndexFile) middle(h *IndexFile) *IndexFile {
+
+	p := l.parentWith(h)
+	if p == nil {
+		return p
+	}
+
+	p.Init()
+
+	// names, err := readDirNames(p.Path)
+	// if err != nil {
+	// 	return nil
+	// }
+	cDirs := p.childs(IdxFileType_Dir)
+
+	if len(cDirs) > 0 {
+		lidx, _ := loncha.IndexOf(cDirs, func(i int) bool {
+			p := l.parentWith(cDirs[i])
+			if p == nil {
+				return false
+			}
+			return p.Path == cDirs[i].Path
+		})
+		_ = lidx
+		hidx, _ := loncha.IndexOf(cDirs, func(i int) bool {
+			p := h.parentWith(cDirs[i])
+			if p == nil {
+				return false
+			}
+			return p.Path == cDirs[i].Path
+		})
+		_ = hidx
+
+		midx := (lidx + hidx) / 2
+		sects := []int{}
+		for i := midx; i <= hidx; i++ {
+			if midx-(i-midx) >= 0 && midx != i {
+				sects = append(sects, midx-(i-midx))
+			}
+			sects = append(sects, i)
+		}
+
+		for _, idx := range sects {
+			mf := cDirs[idx]
+			r := mf.middleAsDir()
+			if r != nil {
+				return r
+			}
+		}
+		return nil
+	}
+	return l.middleFile(p, h)
+
+}
+
+func (d *IndexFile) middleAsDir() *IndexFile {
+
+	cDirs := d.childs(IdxFileType_Dir)
+	if len(cDirs) == 1 {
+		fmt.Printf("1 cDirs=%+v\n", cDirs[0])
+		return cDirs[0].middleAsDir()
+	}
+	if len(cDirs) > 1 {
+		fmt.Printf("> 1 cDirs=%+v\n", cDirs[0])
+		return cDirs[0].middle(cDirs[len(cDirs)-1])
+	}
+
+	cFiles := d.childs(IdxFileType_Write)
+	if len(cFiles) == 0 {
+		return nil
+	} else if len(cFiles) == 1 {
+		return cFiles[0]
+	}
+	idx := 0
+	if (len(cFiles)*10)/2 == len(cFiles)/2 {
+		idx = len(cFiles) / 2
+	} else {
+		idx = len(cFiles)/2 + 1
+	}
+	return cFiles[idx]
+
+}
+
+func (l *IndexFile) middleFile(d, h *IndexFile) *IndexFile {
+
+	files := d.childs(IdxFileType_Write)
+	if len(files) == 0 {
+		//os.Remove(d.Path)
+		return nil
+	}
+	lidx, _ := loncha.IndexOf(files, func(i int) bool {
+		return files[i].Path == l.Path
+	})
+	_ = lidx
+	hidx, _ := loncha.IndexOf(files, func(i int) bool {
+		return files[i].Path == h.Path
+	})
+	_ = hidx
+	idx := (lidx + hidx) / 2
+	return files[idx]
 }
