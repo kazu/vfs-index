@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kazu/fbshelper/query/base"
 	"github.com/kazu/vfs-index/query"
 
 	"github.com/kazu/loncha"
@@ -269,7 +270,7 @@ func (c *Column) MergingIndex(ctx context.Context) error {
 			},
 		}
 	}
-	return c.mergingIndex(idxWriter, ctx)
+	return c.mergeIndex(idxWriter, ctx)
 
 }
 func (c *Column) noMergedPat() string {
@@ -424,6 +425,170 @@ func (c *Column) loadIndex() error {
 	return nil
 
 }
+func (c *Column) mergeIndex(w IdxWriter, ctx context.Context) error {
+
+	c.done = make(chan bool, 2)
+	defer func() {
+		Log(LOG_DEBUG, "mergeIndex() done\n")
+		close(c.done)
+	}()
+	Log(LOG_DEBUG, "mergingIndex() start\n")
+
+	root := query.NewRoot()
+	root.SetVersion(query.FromInt32(1))
+	root.WithHeader()
+	root.SetIndexType(query.FromByte(byte(vfs_schema.IndexIndexNum)))
+	root.Flatten()
+
+	idxNum := query.NewIndexNum()
+	idxNum.Base = base.NewNoLayer(idxNum.Base)
+	keyrecords := query.NewKeyRecordList()
+	keyrecords.Base = base.NewNoLayer(keyrecords.Base)
+
+	var keyRecord *query.KeyRecord
+	var recs *query.RecordList
+	var firstPath *IndexFile
+	var lastPath *IndexFile
+	noMergeIdxFiles := []*IndexFile{}
+
+	total := 1000
+	bar := Pbar.Add("merge index", 1000)
+
+	finder := OpenIndexFile(c)
+
+	i := 0
+
+	finder.Select(
+		OptAsc(true),
+		OptCcondFn(func(f *IndexFile) CondType {
+			if f.Ftype == IdxFileType_None {
+				return CondSkip
+			}
+			if f.IsType(IdxFileType_NoComplete) {
+				return CondSkip
+			} else if f.IsType(IdxFileType_Merge) {
+				return CondSkip
+			} else if f.IsType(IdxFileType_Dir) {
+				return CondLazy
+			}
+
+			return CondTrue
+		}),
+		OptTraverse(func(f *IndexFile) error {
+			if firstPath == nil {
+				firstPath = f
+			}
+			lastPath = f
+			noMergeIdxFiles = append(noMergeIdxFiles, f)
+			bar.Increment()
+			i++
+
+			if i > total-10 {
+				total += total / 4
+				bar.SetTotal(int64(total), false)
+			}
+
+			kr := f.KeyRecord()
+			if kr == nil {
+				Log(LOG_WARN, "mergeIndex(): %s column index file not found\n", f.Path)
+				return nil
+			}
+			if keyRecord == nil || f.IdxInfo().first != keyRecord.Key().Uint64() {
+				if keyRecord != nil {
+					cnt := keyrecords.Count()
+					keyRecord.SetRecords(recs.CommonNode)
+					keyRecord.Flatten()
+					keyrecords.SetAt(cnt, keyRecord)
+				}
+				keyRecord = query.NewKeyRecord()
+				keyRecord.Base = base.NewNoLayer(keyRecord.Base)
+				keyRecord.SetKey(query.FromUint64(f.IdxInfo().first))
+			}
+
+			cnt := keyRecord.Records().Count()
+			if cnt == 0 {
+				recs = query.NewRecordList()
+				recs.Base = base.NewNoLayer(recs.Base)
+			} else {
+				recs = keyRecord.Records()
+			}
+			recs.SetAt(cnt, kr.Value())
+
+			select {
+			case <-ctx.Done():
+				Log(LOG_WARN, "mergeIndex cancel() last_merge=%s\n", f.Path)
+
+				return ErrStopTraverse
+			default:
+			}
+
+			return nil
+		}),
+	)
+	defer func() {
+		bar.SetTotal(int64(i), true)
+		//Pbar.wg.Done()
+	}()
+
+	cnt := keyrecords.Count()
+	if cnt == 0 {
+		Log(LOG_WARN, "mergingIndex no write\n")
+		return nil
+	}
+
+	if query.KeyRecordSingle(keyrecords.At(cnt-1)).Key().Uint64() != keyRecord.Key().Uint64() {
+		keyRecord.SetRecords(recs.CommonNode)
+		keyRecord.Flatten()
+		keyrecords.SetAt(cnt, keyRecord)
+	}
+	keyrecords.Flatten()
+	idxNum.SetIndexes(keyrecords.CommonNode)
+
+	root.SetIndex(idxNum.CommonNode)
+	root.Flatten()
+
+	vname := func(key uint64) string {
+
+		if c.IsNum {
+			return toFname(key)
+		}
+		return fmt.Sprintf("%012x", key)
+	}
+
+	first := firstPath.IdxInfo().first
+	last := lastPath.IdxInfo().last
+
+	wIdxPath := ColumnPathWithStatus(c.TableDir(), c.Name, w.IsNum, vname(first), vname(last), RECORD_MERGING)
+	path := ColumnPathWithStatus(c.TableDir(), c.Name, w.IsNum, vname(first), vname(last), RECORD_MERGED)
+
+	io, e := os.Create(wIdxPath)
+	if e != nil {
+		Log(LOG_WARN, "F:mergingIndex() cannot create... %s\n", wIdxPath)
+		return e
+	}
+	defer io.Close()
+
+	io.Write(root.R(0))
+	Log(LOG_DEBUG, "S: written %s \n", wIdxPath)
+	e = SafeRename(wIdxPath, path)
+	if e != nil {
+		os.Remove(wIdxPath)
+		Log(LOG_DEBUG, "F: rename %s -> %s \n", wIdxPath, path)
+		return e
+	}
+
+	Log(LOG_DEBUG, "S: renamed %s -> %s \n", wIdxPath, path)
+
+	// remove merged file
+	for _, f := range noMergeIdxFiles {
+		os.Remove(f.Path)
+	}
+	Log(LOG_DEBUG, "S: remove merged files count=%d \n", len(noMergeIdxFiles))
+
+	return nil
+}
+
+// Deprecated: should use mergeIndex()
 func (c *Column) mergingIndex(w IdxWriter, ctx context.Context) error {
 
 	c.done = make(chan bool, 2)

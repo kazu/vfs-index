@@ -262,7 +262,7 @@ func TestMerge(t *testing.T) {
 		vfs.RootDir("/Users/xtakei/git/vfs-index/example/vfs-tmp"), vfs.MergeDuration(10*time.Second))
 
 	sCond := idx.On("test", vfs.ReaderColumn("id"), vfs.MergeOnSearch(true))
-	sCond.Searcher()
+	sCond.StartMerging()
 	time.Sleep(10 * time.Second)
 	sCond.CancelAndWait()
 	assert.Equal(t, 1, 1)

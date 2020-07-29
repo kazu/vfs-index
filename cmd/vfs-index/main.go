@@ -111,7 +111,8 @@ func merge(indexDir, column, table, dir string) {
 		fmt.Printf("E: Open(%s) fail errpr=%s\n", dir, e)
 	}
 	sCond := idx.On(table, vfs.ReaderColumn(column), vfs.MergeOnSearch(true))
-	sCond.Searcher()
+
+	sCond.StartMerging()
 	time.Sleep(1 * time.Minute)
 	sCond.CancelAndWait()
 

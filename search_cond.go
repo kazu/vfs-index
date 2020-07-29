@@ -111,6 +111,7 @@ func (cond *SearchCond) startCol(col string) {
 	// 	cond.idxCol.caching()
 	// }
 	cond.column = col
+	cond.idxCol.IsNum = cond.idxCol.IsNumViaIndex()
 }
 
 func (cond *SearchCond) Searcher() *SearchInfo {
@@ -838,6 +839,7 @@ func (cond *SearchCond) Column() *Column {
 
 func (cond *SearchCond) StartMerging() {
 	c := cond.idxCol
+	//c.IsNum = c.IsNumViaIndex()
 	if c.ctx == nil && c.isMergeOnSearch {
 		c.ctx, c.ctxCancel = context.WithTimeout(context.Background(), Opt.mergeDuration)
 		go c.MergingIndex(c.ctx)

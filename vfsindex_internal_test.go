@@ -126,8 +126,10 @@ func Test_IndexFile_Init(t *testing.T) {
 	strs := strings.Split(filepath.Base(a), "name.gram.idx")
 
 	assert.NotNil(t, a)
-	assert.NotNil(t, strs)
+	assert.True(t, len(strs) >= 2)
+	strs = strings.Split(filepath.Base(a), "id.num.idx")
 
+	assert.True(t, len(strs) < 2)
 }
 
 func Test_SearchCondQuery_FirstGram(t *testing.T) {
