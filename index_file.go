@@ -131,10 +131,9 @@ func (f *IndexFile) Select(opts ...SelectOption) (err error) {
 	opt.Merge(opts)
 
 	names, err := readDirNames(f.Path)
+	names = sortAlphabet(names)
 	if !opt.asc {
-		sort.Slice(names, func(i, j int) bool {
-			return i > j
-		})
+		sort.SliceStable(names, func(i, j int) bool { return i > j })
 	}
 
 	afters := []*IndexFile{}
@@ -190,6 +189,8 @@ func (f *IndexFile) First() *IndexFile {
 	if err != nil {
 		return nil
 	}
+	names = sortAlphabet(names)
+
 	dirs := []*IndexFile{}
 	for _, name := range names {
 		f := NewIndexFile(f.c, filepath.Join(f.Path, name))
@@ -221,15 +222,30 @@ func (f *IndexFile) First() *IndexFile {
 	return nil
 }
 
+func sortAlphabet(names []string) []string {
+	sort.Slice(names, func(i, j int) bool {
+		if len(names[i]) == len(names[j]) {
+			for k := 0; k < len(names[i]); k++ {
+				if []rune(names[i])[k] == []rune(names[j])[k] {
+					continue
+				}
+				return []rune(names[i])[k] < []rune(names[j])[k]
+			}
+		}
+		return names[i] < names[j]
+
+	})
+	return names
+}
+
 // First ... Find first IndexFile.
 func (f *IndexFile) Last() *IndexFile {
 	names, err := readDirNames(f.Path)
 	if err != nil {
 		return nil
 	}
-	sort.Slice(names, func(i, j int) bool {
-		return names[i] > names[i]
-	})
+	names = sortAlphabet(names)
+	sort.SliceStable(names, func(i, j int) bool { return i > j })
 
 	afters := []*IndexFile{}
 	for _, name := range names {
@@ -253,6 +269,7 @@ func (f *IndexFile) Last() *IndexFile {
 		if f.IsType(IdxFileType_Dir) {
 			//afters = append(afters, f)
 			if r := f.Last(); r != nil {
+				fmt.Printf("dir=%s path=%s\n", f.Path, r.Path)
 				return r
 			}
 			//dirs = append(dirs, f)
@@ -405,6 +422,7 @@ func (f *IndexFile) findAllFromMergeIdx(key uint64) *IndexFile {
 	if err != nil {
 		return nil
 	}
+	sortAlphabet(names)
 
 	type KeyFile struct {
 		key  uint64

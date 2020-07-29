@@ -169,7 +169,7 @@ func (r *Record) Raw(c *Column) (data []byte) {
 
 func (r *Record) write(c *Column, w IdxWriter) error {
 
-	for _, vName := range w.ValueEncoder(r) {
+	for i, vName := range w.ValueEncoder(r) {
 
 		wPath := ColumnPathWithStatus(c.TableDir(), c.Name, w.IsNum, vName, vName, RECORD_WRITING)
 		path := ColumnPathWithStatus(c.TableDir(), c.Name, w.IsNum, vName, vName, RECORD_WRITTEN)
@@ -185,7 +185,11 @@ func (r *Record) write(c *Column, w IdxWriter) error {
 			Log(LOG_WARN, "F: create...%s err=%s\n", wPath, e)
 			return e
 		}
-		io.Write(r.ToFbs(r.Uint64Value(c)))
+		if c.IsNum {
+			io.Write(r.ToFbs(r.Uint64Value(c)))
+		} else {
+			io.Write(r.ToFbs(TriKeys(r.StrValue(c))[i]))
+		}
 
 		io.Close()
 		Log(LOG_DEBUG, "S: written %s \n", wPath)
@@ -246,7 +250,7 @@ func (r *Record) ToFbs(inf interface{}) []byte {
 	root.SetIndex(inv.CommonNode)
 
 	// FIXME return io writer ?
-	root.Merge()
+	root.Flatten()
 	return root.R(0)
 }
 

@@ -117,13 +117,15 @@ func (idx *Indexer) OpenCol(flist *FileList, table, col string) *Column {
 
 func NewColumn(flist *FileList, table, col string) *Column {
 	//if _, e := os.Stat(ColumnPath(tableDir)); os.IsNotExist(e) {
-	return &Column{
+	c := &Column{
 		Table:   table,
 		Name:    col,
 		Flist:   flist,
 		Dirties: NewRecords(RECORDS_INIT),
 		cache:   NewIdxCaches(),
 	}
+	c.IsNum = c.IsNumViaIndex()
+	return c
 }
 
 func (c *Column) Update(d time.Duration) error {
@@ -432,7 +434,7 @@ func (c *Column) mergeIndex(w IdxWriter, ctx context.Context) error {
 		Log(LOG_DEBUG, "mergeIndex() done\n")
 		close(c.done)
 	}()
-	Log(LOG_DEBUG, "mergingIndex() start\n")
+	Log(LOG_DEBUG, "mergeIndex() start\n")
 
 	root := query.NewRoot()
 	root.SetVersion(query.FromInt32(1))
@@ -496,13 +498,22 @@ func (c *Column) mergeIndex(w IdxWriter, ctx context.Context) error {
 			if keyRecord == nil || f.IdxInfo().first != keyRecord.Key().Uint64() {
 				if keyRecord != nil {
 					cnt := keyrecords.Count()
-					keyRecord.SetRecords(recs.CommonNode)
+					e := keyRecord.SetRecords(recs.CommonNode)
+					if e != nil {
+						Log(LOG_ERROR, "mergeIndex(): %s fail to set to records\n", f.Path)
+						return e
+					}
 					keyRecord.Flatten()
-					keyrecords.SetAt(cnt, keyRecord)
+					e = keyrecords.SetAt(cnt, keyRecord)
+					if e != nil {
+						Log(LOG_ERROR, "mergeIndex(): %s fail to set to keyrecords cnt=%d\n", f.Path, cnt)
+						return e
+					}
 				}
 				keyRecord = query.NewKeyRecord()
 				keyRecord.Base = base.NewNoLayer(keyRecord.Base)
 				keyRecord.SetKey(query.FromUint64(f.IdxInfo().first))
+
 			}
 
 			cnt := keyRecord.Records().Count()
@@ -512,7 +523,11 @@ func (c *Column) mergeIndex(w IdxWriter, ctx context.Context) error {
 			} else {
 				recs = keyRecord.Records()
 			}
-			recs.SetAt(cnt, kr.Value())
+			e := recs.SetAt(cnt, kr.Value())
+			if e != nil {
+				Log(LOG_ERROR, "mergeIndex(): %s fail to set to recs cnt=%d\n", f.Path, cnt)
+				return e
+			}
 
 			select {
 			case <-ctx.Done():
@@ -532,7 +547,7 @@ func (c *Column) mergeIndex(w IdxWriter, ctx context.Context) error {
 
 	cnt := keyrecords.Count()
 	if cnt == 0 {
-		Log(LOG_WARN, "mergingIndex no write\n")
+		Log(LOG_WARN, "mergeIndex no write\n")
 		return nil
 	}
 
@@ -563,7 +578,7 @@ func (c *Column) mergeIndex(w IdxWriter, ctx context.Context) error {
 
 	io, e := os.Create(wIdxPath)
 	if e != nil {
-		Log(LOG_WARN, "F:mergingIndex() cannot create... %s\n", wIdxPath)
+		Log(LOG_WARN, "F:mergeIndex() cannot create... %s\n", wIdxPath)
 		return e
 	}
 	defer io.Close()
@@ -584,195 +599,6 @@ func (c *Column) mergeIndex(w IdxWriter, ctx context.Context) error {
 		os.Remove(f.Path)
 	}
 	Log(LOG_DEBUG, "S: remove merged files count=%d \n", len(noMergeIdxFiles))
-
-	return nil
-}
-
-// Deprecated: should use mergeIndex()
-func (c *Column) mergingIndex(w IdxWriter, ctx context.Context) error {
-
-	c.done = make(chan bool, 2)
-	defer func() {
-		Log(LOG_DEBUG, "mergingIndex() done\n")
-		close(c.done)
-	}()
-	Log(LOG_DEBUG, "mergingIndex() start\n")
-
-	pat := c.noMergedPat()
-	if !hasGlobCache(pat) {
-		ch := paraGlob(pat)
-		for range ch {
-
-		}
-	}
-	noMergeIdxPath := globCacheInstance.Get(pat)
-
-	// noMergeIdxCh, e := c.noMergedFPath()
-	// if e != nil {
-	// 	return e
-	// }
-	//noMergeIdxFiles = noMergeIdxFiles[0:20]
-
-	vname := func(key uint64) string {
-
-		if c.IsNum {
-			return toFname(key)
-		}
-		return fmt.Sprintf("%012x", key)
-	}
-
-	root := query.NewRoot()
-	root.SetVersion(query.FromInt32(1))
-	root.WithHeader()
-	root.SetIndexType(query.FromByte(byte(vfs_schema.IndexIndexNum)))
-
-	idxNum := query.NewIndexNum()
-	keyrecords := query.NewKeyRecordList()
-
-	var keyRecord *query.KeyRecord
-	var recs *query.RecordList
-	total := noMergeIdxPath.Count()
-
-	// p := mpb.New(mpb.WithWidth(64))
-	// bar := p.AddBar(int64(total),
-	// 	mpb.PrependDecorators(
-	// 		decor.Name("index merging", decor.WC{W: len("index merging") + 1, C: decor.DidentRight}),
-	// 		decor.OnComplete(
-	// 			decor.AverageETA(decor.ET_STYLE_GO, decor.WC{W: 4}), "done",
-	// 		),
-	// 	),
-	// 	mpb.AppendDecorators(decor.CountersNoUnit("%d / %d")),
-	// )
-	bar := Pbar.Add("index merging", total)
-
-	LastIdx := 0 //len(noMergeIdxFiles) - 1
-	noMergeIdxFiles := []string{}
-
-	i := 0
-	for j := 0; j < noMergeIdxPath.Count(); j++ {
-		//	for noMergeIdxFile := range noMergeIdxCh {
-		noMergeIdxFile := string(query.PathInfoSingle(globCacheInstance.Get(c.noMergedPat()).At(j)).Path().Bytes())
-		bar.Increment()
-		if !FileExist(noMergeIdxFile) {
-			continue
-		}
-		noMergeIdxFiles = append(noMergeIdxFiles, noMergeIdxFile)
-		bar.Increment()
-
-		rio, e := os.Open(noMergeIdxFile)
-
-		if e != nil {
-			Log(LOG_WARN, "mergingIndex(): %s column index file not found\n", noMergeIdxFile)
-			continue
-		}
-		defer rio.Close()
-		record := fbsRecord(rio)
-		if keyRecord == nil ||
-			NewIndexInfo(idxPath2Info(noMergeIdxFile)).first != keyRecord.Key().Uint64() {
-
-			if keyRecord != nil {
-				cnt := keyrecords.Count()
-				keyRecord.SetRecords(recs.CommonNode)
-				keyRecord.Merge()
-				keyrecords.SetAt(cnt, keyRecord)
-
-				// if i < 10 {
-				// 	//FIXME debug only remove later
-				// 	kr, _ := keyrecords.At(cnt)
-				// 	r, _ := kr.Records().At(0)
-				// 	fmt.Printf("keyRecords[%d] = {Key: %d, len(Records)=%d records[0].file_id=%d}\n",
-				// 		cnt, kr.Key().Uint64(), kr.Records().Count(), r.Offset().Int64())
-				// 	fmt.Printf("record.file_id=%d\n", record.Offset().Int64())
-				// }
-			}
-			keyRecord = query.NewKeyRecord()
-			keyRecord.SetKey(query.FromUint64(NewIndexInfo(idxPath2Info(noMergeIdxFile)).first))
-		}
-
-		cnt := keyRecord.Records().Count()
-
-		if cnt == 0 {
-			recs = query.NewRecordList()
-		} else {
-			recs = keyRecord.Records()
-		}
-		recs.SetAt(cnt, record)
-
-		select {
-		case <-ctx.Done():
-			LastIdx = i
-			Log(LOG_WARN, "mergingIndex cancel() last_merge=%s\n", noMergeIdxFile)
-			//bar.IncrBy(len(noMergeIdxFiles) - i)
-
-			globCacheInstance.Finish(c.noMergedPat())
-			defer func() {
-				bar.SetTotal(int64(j), true)
-				Pbar.wg.Done()
-			}()
-			goto FINISH
-		default:
-		}
-		i++
-	}
-
-FINISH:
-	cnt := keyrecords.Count()
-	if cnt == 0 {
-		Log(LOG_WARN, "mergingIndex no write\n")
-		return nil
-	}
-
-	if query.KeyRecordSingle(keyrecords.At(cnt-1)).Key().Uint64() != keyRecord.Key().Uint64() {
-		keyRecord.SetRecords(recs.CommonNode)
-		keyRecord.Merge()
-		keyrecords.SetAt(cnt, keyRecord)
-	}
-	keyrecords.Merge()
-	idxNum.SetIndexes(keyrecords.CommonNode)
-
-	root.SetIndex(idxNum.CommonNode)
-	root.Merge()
-
-	noMergeIdxFiles = noMergeIdxFiles[0 : LastIdx+1]
-
-	lastPos := len(noMergeIdxFiles) - 1
-	first := NewIndexInfo(idxPath2Info(noMergeIdxFiles[0])).first
-	last := NewIndexInfo(idxPath2Info(noMergeIdxFiles[lastPos])).last
-	// FIXME old index merge
-	wIdxPath := ColumnPathWithStatus(c.TableDir(), c.Name, w.IsNum, vname(first), vname(last), RECORD_MERGING)
-	path := ColumnPathWithStatus(c.TableDir(), c.Name, w.IsNum, vname(first), vname(last), RECORD_MERGED)
-
-	io, e := os.Create(wIdxPath)
-	if e != nil {
-		Log(LOG_WARN, "F:mergingIndex() cannot create... %s\n", wIdxPath)
-		return e
-	}
-	defer io.Close()
-
-	io.Write(root.R(0))
-	Log(LOG_DEBUG, "S: written %s \n", wIdxPath)
-	e = SafeRename(wIdxPath, path)
-	if e != nil {
-		os.Remove(wIdxPath)
-		Log(LOG_DEBUG, "F: rename %s -> %s \n", wIdxPath, path)
-		return e
-	}
-
-	Log(LOG_DEBUG, "S: renamed %s -> %s \n", wIdxPath, path)
-
-	// remove merged file
-	for _, noMergeIdxFile := range noMergeIdxFiles {
-		os.Remove(noMergeIdxFile)
-	}
-	Log(LOG_DEBUG, "S: remove merged files count=%d \n", len(noMergeIdxFiles))
-
-	c.cache.infos = append(c.cache.infos,
-		&IdxInfo{
-			path:  path,
-			first: first,
-			last:  last,
-			buf:   root.R(0),
-		})
 
 	return nil
 }

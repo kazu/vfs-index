@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kazu/vfs-index/query"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -14,7 +15,7 @@ func Test_IndexFIle(t *testing.T) {
 	idx, e := Open("/Users/xtakei/git/vfs-index/example/data",
 		RootDir("/Users/xtakei/git/vfs-index/example/vfs-tmp"))
 
-	sCond := idx.On("test", ReaderColumn("id"), MergeOnSearch(true))
+	sCond := idx.On("test", ReaderColumn("name"), MergeOnSearch(false))
 
 	c := sCond.Column()
 	finder := OpenIndexFile(c)
@@ -24,23 +25,26 @@ func Test_IndexFIle(t *testing.T) {
 	assert.NoError(t, e)
 	assert.Equal(t, IdxFileType_Dir, finder.Ftype)
 	assert.True(t, keyrecords.Count() > 0)
-	assert.Equal(t, uint64(kr.Key().Int64()), finder.First().IdxInfo().first)
+	assert.Equal(t, kr.Key().Uint64(), finder.First().IdxInfo().first)
 
 	kr2 := finder.Last().KeyRecord()
-	assert.Equal(t, uint64(kr2.Key().Uint64()), finder.Last().IdxInfo().last)
+	assert.Equal(t, kr2.Key().Uint64(), finder.Last().IdxInfo().last)
 
-	f := NewIndexFile(c, "/Users/xtakei/git/vfs-index/example/vfs-tmp/test/id.num.idx.merged.0000bfca7c-01127d061c")
+	f := NewIndexFile(c, "/Users/xtakei/git/vfs-index/example/vfs-tmp/test/name.gram.idx.merged.00200020002e-00490020004c")
 	f.Init()
 
 	assert.True(t, f.IsType(IdxFileType_Merge))
-	assert.Equal(t, uint64(0x0000bfca7c), f.IdxInfo().first)
+	assert.Equal(t, uint64(0x00200020002e), f.IdxInfo().first)
 
 	f = NewIndexFile(c, "/Users/xtakei/git/vfs-index/example/vfs-tmp/test/0000/bfca/7e/id.num.idx.0000bfca7e-0000bfca7e.0001483950.0000000f02")
 	f.Init()
-	assert.True(t, f.IsType(IdxFileType_Write))
-	f = NewIndexFile(c, "/Users/xtakei/git/vfs-index/example/vfs-tmp/test/30d8/30d6/30f3/name.gram.idx.30d830d630f3-30d830d630f3.00014829a5.0000032116")
-	f.Init()
+
 	assert.Equal(t, IdxFileType_None, f.Ftype)
+	f = NewIndexFile(c, "/Users/xtakei/git/vfs-index/example/vfs-tmp/test/ff61/30d9/30c3/name.gram.idx.ff6130d930c3-ff6130d930c3.00014829a5.000003f5b1")
+	f.Init()
+	a := f.KeyRecord().Key().Int64()
+	_ = a
+	assert.True(t, f.IsType(IdxFileType_Write))
 
 }
 func Test_FindByKey_IndexFIle(t *testing.T) {
@@ -182,5 +186,27 @@ func Test_IndexFile_Select(t *testing.T) {
 
 	assert.Error(t, e)
 	assert.True(t, len(matches) == 100)
+
+}
+
+func Test_Recrod_ToFbs(t *testing.T) {
+
+	r := &Record{
+		fileID: 1,
+		offset: 2,
+		size:   3,
+	}
+	r.cache = map[string]interface{}{}
+	r.cache["name"] = interface{}("hogehoge")
+
+	buf := r.ToFbs(TriKeys("hogehoge")[0])
+
+	trikeies := TriKeys("hogehoge")
+	_ = trikeies
+	root := query.OpenByBuf(buf)
+	a := root.Index().InvertedMapNum().Key().Uint64()
+	_ = a
+	assert.NotEqual(t, uint64(0),
+		root.Index().InvertedMapNum().Key().Uint64())
 
 }
