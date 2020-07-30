@@ -24,4 +24,4 @@ require (
 	github.com/vbauerster/mpb/v5 v5.2.4
 )
 
-// replace github.com/kazu/fbshelper => ../fbshelper/
+replace github.com/kazu/fbshelper => ../fbshelper/
