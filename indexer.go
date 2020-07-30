@@ -6,17 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	flatbuffers "github.com/google/flatbuffers/go"
-	"github.com/kazu/vfs-index/vfs_schema"
 	//"/github.com/kazu/loncha"
 )
-
-func Hoge() bool {
-	b := flatbuffers.NewBuilder(0)
-	vfs_schema.RootStart(b)
-	return true
-}
 
 type LogLevel int
 
