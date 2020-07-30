@@ -145,7 +145,20 @@ func Test_SearchCondQuery_FirstGram(t *testing.T) {
 
 	sCond := idx.On("test", ReaderColumn("name"), MergeOnSearch(false))
 
-	str := sCond.Query(`name == "無門会"`).First(ResultOutput("json")).(string)
+	str := sCond.Query2(`name == "無門会"`).First(ResultOutput("json")).(string)
+
+	assert.NoError(t, e)
+	assert.True(t, len(str) > 0)
+}
+
+func Test_SearchCondQueryLess_FirstGram(t *testing.T) {
+	CurrentLogLoevel = LOG_WARN
+	idx, e := Open("/Users/xtakei/git/vfs-index/example/data",
+		RootDir("/Users/xtakei/git/vfs-index/example/vfs-tmp"))
+
+	sCond := idx.On("test", ReaderColumn("name"), MergeOnSearch(false))
+
+	str := sCond.Query2(`name <= "無門会"`).First(ResultOutput("json")).(string)
 
 	assert.NoError(t, e)
 	assert.True(t, len(str) > 0)

@@ -140,10 +140,10 @@ func search(query, indexDir, column, table, dir string, first, nomerge bool) {
 	//info = sCond.Query(query)
 
 	if first {
-		result := sCond.Query(query).First(vfs.ResultOutput("json"))
+		result := sCond.Query2(query).First(vfs.ResultOutput("json"))
 		fmt.Printf("%s\n", result)
 	} else {
-		results := sCond.Query(query).All(vfs.ResultOutput("json"))
+		results := sCond.Query2(query).All(vfs.ResultOutput("json"))
 		for _, result := range results {
 			fmt.Printf("%s\n", result)
 		}

@@ -317,7 +317,6 @@ func (f *IndexFile) Last() *IndexFile {
 		if f.IsType(IdxFileType_Dir) {
 			//afters = append(afters, f)
 			if r := f.Last(); r != nil {
-				fmt.Printf("dir=%s path=%s\n", f.Path, r.Path)
 				return r
 			}
 			//dirs = append(dirs, f)

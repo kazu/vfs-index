@@ -1,6 +1,8 @@
 package vfsindex
 
 import (
+	"fmt"
+
 	"github.com/kazu/fbshelper/query/base"
 	"github.com/kazu/loncha"
 	"github.com/kazu/vfs-index/query"
@@ -78,7 +80,8 @@ func (s1 *SearchFinder) And(s2 *SearchFinder) (s *SearchFinder) {
 		for i := 0; i < len(records2); i++ {
 			r1 := s.matches[j]
 			r2 := records2[i]
-			if r1.FileId().Uint64() == r2.FileId().Uint64() {
+			if r1.FileId().Uint64() == r2.FileId().Uint64() &&
+				r1.Offset().Int64() == r2.Offset().Int64() {
 				//last_match = i + 1
 				return true
 			}
@@ -184,10 +187,13 @@ func (sf *SearchFinder2) All(opts ...ResultOpt) []interface{} {
 	opts = append(opts, ResultOutput(""))
 
 	result := []interface{}{}
-	for i, recFn := range sf.recordFns {
-		for _, rec := range recFn(sf.skipdFns[i](map[int]bool{})) {
-			result = append(result, opts[0](sf.column(), rec))
-		}
+
+	recs := sf.Records()
+	loncha.Uniq(&recs, func(i int) interface{} {
+		return fmt.Sprintf("0x%x0x%x", recs[i].FileId().Uint64(), recs[i].Offset().Int64())
+	})
+	for i := range recs {
+		result = append(result, opts[0](sf.column(), recs[i]))
 	}
 
 	return result
@@ -208,6 +214,10 @@ func (sf *SearchFinder2) First(opts ...ResultOpt) interface{} {
 
 	opts = append(opts, ResultOutput(""))
 
+	if sf.Count() == 0 {
+		return nil
+	}
+
 	recs := sf.recordFns[0](sf.skipdFns[0](map[int]bool{}))
 
 	return opts[0](sf.column(), recs[0])
@@ -217,6 +227,10 @@ func (sf *SearchFinder2) First(opts ...ResultOpt) interface{} {
 func (sf *SearchFinder2) Last(opts ...ResultOpt) interface{} {
 
 	opts = append(opts, ResultOutput(""))
+
+	if sf.Count() == 0 {
+		return nil
+	}
 
 	idx := len(sf.recordFns) - 1
 	recs := sf.recordFns[idx](sf.skipdFns[idx](map[int]bool{}))

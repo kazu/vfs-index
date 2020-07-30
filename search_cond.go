@@ -198,6 +198,7 @@ const (
 	KeyStateFinish int = 4
 )
 
+// Deprecated: should use Query2
 func (f *SearchCond) Query(s string) (r *SearchFinder) {
 	q, err := expr.GetExpr(s)
 	c := f.idxCol
@@ -218,6 +219,45 @@ func (f *SearchCond) Query(s string) (r *SearchFinder) {
 		return f.FindBy(q.Column, q.Value)
 	}
 	return EmptySearchFinder()
+}
+
+func (f *SearchCond) Query2(s string) (r *SearchFinder2) {
+	q, err := expr.GetExpr(s)
+	c := f.idxCol
+	c.IsNum = c.IsNumViaIndex()
+
+	if err != nil {
+		return NewSearchFinder2(f.idxCol)
+	}
+
+	// if q.Op == "search" && c.Name == q.Column && !c.IsNum {
+	// 	return f.FindBy(q.Column, q.Value)
+	// }
+	// if q.Op == "==" {
+	// 	if f.idxCol.IsNum {
+	// 		uintVal, _ := strconv.ParseUint(q.Value, 10, 64)
+	// 		return f.FindBy(q.Column, uintVal)
+	// 	}
+	// 	return f.FindBy(q.Column, q.Value)
+	// }
+	// return EmptySearchFinder()
+
+	if q.Op == "search" && c.Name == q.Column && !c.IsNum {
+		return f.Select2(func(cond SearchCondElem2) bool {
+			return cond.Op(q.Column, "==", q.Value)
+		})
+	}
+	var uintVal uint64
+	if f.idxCol.IsNum {
+		uintVal, _ = strconv.ParseUint(q.Value, 10, 64)
+		return f.Select2(func(cond SearchCondElem2) bool {
+			return cond.Op(q.Column, q.Op, uintVal)
+		})
+	}
+
+	return f.Select2(func(cond SearchCondElem2) bool {
+		return cond.Op(q.Column, q.Op, q.Value)
+	})
 }
 
 func (f *SearchCond) Match(s string) *SearchFinder {
@@ -271,11 +311,24 @@ func (cond *SearchCond) Select2(fn func(SearchCondElem2) bool) (sfinder *SearchF
 				lastIdx := len(sfind.recordFns) - 1
 				sfind.skipdFns[lastIdx] = sfind.And(lastIdx, key)
 			}
-			//sinfo = cond.findBy(col, keys)
 		case CondOpLe, CondOpLt:
-			//sinfo = cond.findBy(col, keys, findNearestFn(true))
+			for i, key := range keys {
+				if i == 0 {
+					sfind.recordFns = append(sfind.recordFns, idxFinder.RecordNearByKey(key, true))
+					sfind.skipdFns = append(sfind.skipdFns, EmptySkip)
+				}
+				lastIdx := len(sfind.recordFns) - 1
+				sfind.skipdFns[lastIdx] = sfind.And(lastIdx, key)
+			}
 		case CondOpGe, CondOpGt:
-			//sinfo = cond.findBy(col, keys, findNearestFn(true))
+			for i, key := range keys {
+				if i == 0 {
+					sfind.recordFns = append(sfind.recordFns, idxFinder.RecordNearByKey(key, false))
+					sfind.skipdFns = append(sfind.skipdFns, EmptySkip)
+				}
+				lastIdx := len(sfind.recordFns) - 1
+				sfind.skipdFns[lastIdx] = sfind.And(lastIdx, key)
+			}
 		}
 		sfinder = sfind
 		return sfind
@@ -335,10 +388,6 @@ type SearchCondElem2 struct {
 func (cond SearchCondElem2) Op(col, op string, v interface{}) (result bool) {
 
 	if col != cond.Column().Name {
-		return false
-	}
-
-	if op != "==" {
 		return false
 	}
 
