@@ -1,6 +1,7 @@
 package vfsindex
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -15,7 +16,7 @@ import (
 	"github.com/kazu/fbshelper/query/base"
 
 	"github.com/kazu/loncha"
-	query "github.com/kazu/vfs-index/qeury"
+	"github.com/kazu/vfs-index/query"
 	"github.com/kazu/vfs-index/vfs_schema"
 )
 
@@ -263,7 +264,7 @@ func (f *File) Write(l *FileList) error {
 }
 
 // FIXME: support other format
-func (f *File) Records(dir string) <-chan *Record {
+func (f *File) Records(ctx context.Context, dir string) <-chan *Record {
 	ch := make(chan *Record, 5)
 
 	rio, e := os.Open(filepath.Join(dir, f.name))
@@ -272,6 +273,7 @@ func (f *File) Records(dir string) <-chan *Record {
 		rio.Close()
 		return ch
 	}
+
 	ext := filepath.Ext(f.name)
 
 	dec, err := GetDecoder(f.name)
@@ -282,6 +284,6 @@ func (f *File) Records(dir string) <-chan *Record {
 		return ch
 	}
 
-	return dec.Tokenizer(rio, f)
+	return dec.Tokenizer(ctx, rio, f)
 
 }

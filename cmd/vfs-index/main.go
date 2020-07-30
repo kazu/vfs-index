@@ -86,10 +86,11 @@ func main() {
 
 func indexing(indexDir, column, table, dir string) {
 	vfs.CurrentLogLoevel = vfs.LOG_WARN
+	//vfs.CurrentLogLoevel = vfs.LOG_DEBUG
 
 	cur, _ := os.Getwd()
 	opt := vfs.RootDir(filepath.Join(cur, indexDir))
-	idx, e := vfs.Open(filepath.Join(cur, dir), opt)
+	idx, e := vfs.Open(filepath.Join(cur, dir), opt, vfs.RegitConcurrent(8))
 
 	if e != nil {
 		fmt.Printf("E: Open(%s) fail errpr=%s\n", dir, e)
@@ -100,8 +101,7 @@ func indexing(indexDir, column, table, dir string) {
 
 func merge(indexDir, column, table, dir string) {
 	vfs.CurrentLogLoevel = vfs.LOG_WARN
-
-	//vfs.CurrentLogLoevel = vfs.LOG_ERROR
+	//vfs.CurrentLogLoevel = vfs.LOG_DEBUG
 
 	cur, _ := os.Getwd()
 	opt := vfs.RootDir(filepath.Join(cur, indexDir))
@@ -110,8 +110,9 @@ func merge(indexDir, column, table, dir string) {
 	if e != nil {
 		fmt.Printf("E: Open(%s) fail errpr=%s\n", dir, e)
 	}
-	sCond := idx.On(table, vfs.ReaderColumn(column))
-	sCond.Searcher()
+	sCond := idx.On(table, vfs.ReaderColumn(column), vfs.MergeOnSearch(true))
+
+	sCond.StartMerging()
 	time.Sleep(1 * time.Minute)
 	sCond.CancelAndWait()
 
@@ -135,19 +136,28 @@ func search(query, indexDir, column, table, dir string, first, nomerge bool) {
 
 	//ival, e := strconv.ParseUint(query, 10, 64)
 
-	var info *vfs.SearchInfo
-
 	sCond := idx.On(table, vfs.ReaderColumn(column), vfs.MergeOnSearch(!nomerge))
-	info = sCond.Searcher().Query(query)
+	//info = sCond.Query(query)
 
 	if first {
-		result := sCond.ToJsonStr(info.First())
+		result := sCond.Query2(query).First(vfs.ResultOutput("json"))
 		fmt.Printf("%s\n", result)
 	} else {
-		results := sCond.ToJsonStrs(info.All())
+		results := sCond.Query2(query).All(vfs.ResultOutput("json"))
 		for _, result := range results {
 			fmt.Printf("%s\n", result)
 		}
 	}
 	sCond.CancelAndWait()
+
+	// if first {
+	// 	result := sCond.ToJsonStr(info.First())
+	// 	fmt.Printf("%s\n", result)
+	// } else {
+	// 	results := sCond.ToJsonStrs(info.All())
+	// 	for _, result := range results {
+	// 		fmt.Printf("%s\n", result)
+	// 	}
+	// }
+	//sCond.CancelAndWait()
 }

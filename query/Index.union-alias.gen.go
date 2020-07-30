@@ -120,3 +120,26 @@ func IndexFromInvertedMapString(v *InvertedMapString) *Index {
 	result.FetchIndex()
 	return result
 }
+
+/*
+genny must be called per Index ;
+*/
+
+var DUMMP_IndexIdxEntry bool = base.SetAlias("Index", "IdxEntry")
+
+func (node Index) IdxEntry() IdxEntry {
+	//result := IdxEntry{CommonNode: node.CommonNode}
+	result := IdxEntry{}
+	result.CommonNode = &CommonNode{}
+	result.NodeList = node.NodeList
+	result.CommonNode.Name = "IdxEntry"
+	result.FetchIndex()
+	return result
+}
+
+func IndexFromIdxEntry(v *IdxEntry) *Index {
+	result := &Index{}
+	result.CommonNode = v.CommonNode
+	result.FetchIndex()
+	return result
+}
