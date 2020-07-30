@@ -31,13 +31,13 @@ var globCacheInstance GlobCache
 
 func init() {
 
-	globCacheInstance = GlobCache{
-		ReqCh:   make(chan GlobRequest, 512),
-		isWork:  map[string]bool{},
-		dReader: map[string]io.ReaderAt{},
-	}
-	globCacheInstance.ctx, globCacheInstance.cancel = context.WithCancel(context.Background())
-	globCacheInstance.Start()
+	// globCacheInstance = GlobCache{
+	// 	ReqCh:   make(chan GlobRequest, 512),
+	// 	isWork:  map[string]bool{},
+	// 	dReader: map[string]io.ReaderAt{},
+	// }
+	// globCacheInstance.ctx, globCacheInstance.cancel = context.WithCancel(context.Background())
+	// globCacheInstance.Start()
 }
 
 func (g *GlobCache) Start() error {

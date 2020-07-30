@@ -621,7 +621,54 @@ func (cond *SearchCond) FindBy(col string, kInf interface{}) (sinfo *SearchFinde
 	return cond.findBy(col, keys)
 }
 
-func (cond *SearchCond) findBy(col string, keys []uint64) (sinfo *SearchFinder) {
+func (cond *SearchCond) findNearest(col string, key []uint64, less bool) (sinfo *SearchFinder) {
+
+	c := cond.idxCol
+	idxFinder := OpenIndexFile(c)
+	if c.Name != col {
+		// FIXME: findAll()
+		return EmptySearchFinder()
+	}
+	idxs := []*IndexFile{}
+	for i := range key {
+		idxs = append(idxs, idxFinder.FindNearByKey(key[i], less)...)
+	}
+	loncha.Delete(&idxs, func(i int) bool {
+		return idxs[i] == nil
+	})
+
+	return
+}
+
+type findByOption func(*IndexFile, uint64) []*IndexFile
+
+// FIXME: add routine for removing equal key
+func findNearestFn(less bool) findByOption {
+	return func(f *IndexFile, key uint64) []*IndexFile {
+		results := f.FindNearByKey(key, less)
+		// if len(results) == 0 || results[0] == nil {
+		// 	return []*IndexFile{}
+		// }
+		// if less {
+		// 	results[0].first = f.First().IdxInfo().first
+		// }else{
+		// 	results[0].
+		// }
+		return results
+	}
+}
+
+func findEqFn() findByOption {
+	return func(f *IndexFile, key uint64) []*IndexFile {
+		return f.FindByKey(key)
+	}
+}
+
+func (cond *SearchCond) findBy(col string, keys []uint64, fns ...findByOption) (sinfo *SearchFinder) {
+	fn := findEqFn()
+	if len(fns) > 0 {
+		fn = fns[0]
+	}
 
 	c := cond.idxCol
 	idxFinder := OpenIndexFile(c)
@@ -632,7 +679,8 @@ func (cond *SearchCond) findBy(col string, keys []uint64) (sinfo *SearchFinder) 
 	}
 
 	key2searchFinder := func(key uint64) *SearchFinder {
-		idxs := idxFinder.FindByKey(key)
+		//idxs := idxFinder.FindByKey(key)
+		idxs := fn(idxFinder, key)
 		if len(idxs) == 0 || idxs[0] == nil {
 			return nil
 		}
@@ -759,8 +807,16 @@ func (cond *SearchCond) Select(fn func(SearchCondElem) bool) (sinfo *SearchFinde
 		return cond.idxCol
 	}
 
-	gotVal := func(col string) *SearchFinder {
-		sinfo = cond.findBy(col, keys)
+	gotVal := func(col string, op CondOp) (sinfo *SearchFinder) {
+		switch op {
+		case CondOpEq:
+			sinfo = cond.findBy(col, keys)
+		case CondOpLe, CondOpLt:
+			sinfo = cond.findBy(col, keys, findNearestFn(true))
+		case CondOpGe, CondOpGt:
+			sinfo = cond.findBy(col, keys, findNearestFn(true))
+		}
+
 		return sinfo
 	}
 
@@ -786,15 +842,121 @@ func (cond *SearchCond) Select(fn func(SearchCondElem) bool) (sinfo *SearchFinde
 	return EmptySearchFinder()
 }
 
+func (cond *SearchCond) Select2(fn func(SearchCondElem2) bool) (sfinder *SearchFinder2) {
+
+	c := cond.idxCol
+	idxFinder := OpenIndexFile(c)
+	first := idxFinder.First()
+	last := idxFinder.Last()
+	_, _ = first, last
+
+	sfinder2 := NewSearchFinder2(cond.Column())
+	// frec := first.FirstRecord()
+	// frec.caching(c)
+	// lrec := last.LastRecord()
+	// lrec.caching(c)
+
+	keys := []uint64{}
+
+	keyState := make(chan int, 2)
+
+	setKey := func(origk interface{}) []uint64 {
+		switch k := origk.(type) {
+		case uint64:
+			keys = append(keys, k)
+		case int:
+			keys = append(keys, uint64(k))
+		case string:
+			keys = append(keys, TriKeys(k)...)
+		}
+		keyState <- KeyStateGot
+		return keys
+	}
+	getCol := func() *Column {
+		return cond.idxCol
+	}
+
+	gotVal := func(col string, op CondOp) (sfind *SearchFinder2) {
+		sfind = NewSearchFinder2(cond.Column())
+		switch op {
+		case CondOpEq:
+			for i, key := range keys {
+				if i == 0 {
+					sfind.recordFns = append(sfind.recordFns, idxFinder.RecordByKey(key))
+					sfind.skipdFns = append(sfind.skipdFns, EmptySkip)
+				}
+				lastIdx := len(sfind.recordFns) - 1
+				sfind.skipdFns[lastIdx] = sfind.And(lastIdx, key)
+			}
+			//sinfo = cond.findBy(col, keys)
+		case CondOpLe, CondOpLt:
+			//sinfo = cond.findBy(col, keys, findNearestFn(true))
+		case CondOpGe, CondOpGt:
+			//sinfo = cond.findBy(col, keys, findNearestFn(true))
+		}
+		sfinder = sfind
+		return sfind
+	}
+
+	econd := SearchCondElem2{setKey: setKey, Column: getCol, getValue: gotVal}
+
+	var isTrue bool
+	go func(cond SearchCondElem2) {
+		isTrue = fn(cond)
+		keyState <- KeyStateFinish
+	}(econd)
+
+	for {
+		state, ok := <-keyState
+		if !ok || state == KeyStateFinish {
+			break
+		}
+	}
+
+	if isTrue {
+		return
+	}
+
+	return sfinder2
+}
+
+type CondOp byte
+
+const (
+	CondOpEq CondOp = iota
+	CondOpLe
+	CondOpLt
+	CondOpGe
+	CondOpGt
+)
+
+var StringOp map[string]CondOp = map[string]CondOp{
+	"==": CondOpEq,
+	"<=": CondOpLe,
+	"<":  CondOpLt,
+	">=": CondOpGe,
+	">":  CondOpGe,
+}
+
 type SetKey func(interface{}) []uint64
 type GetCol func() *Column
-type GetValue func(col string) *SearchFinder
+type GetValue func(string, CondOp) *SearchFinder
+type GetValue2 func(string, CondOp) *SearchFinder2
+
+// Deprecated: repplace SearchCondElem2
 type SearchCondElem struct {
 	setKey   SetKey
 	Column   GetCol
 	getValue GetValue
 }
 
+type SearchCondElem2 struct {
+	setKey   SetKey
+	Column   GetCol
+	getValue GetValue2
+}
+
+// Deprecated: repplace SearchCondElem2
 func (cond SearchCondElem) Op(col, op string, v interface{}) (result bool) {
 
 	if col != cond.Column().Name {
@@ -807,30 +969,26 @@ func (cond SearchCondElem) Op(col, op string, v interface{}) (result bool) {
 
 	keys := cond.setKey(v)
 	_ = keys
-	finder := cond.getValue(col)
+	finder := cond.getValue(col, StringOp[op])
 
 	return finder != nil
+}
 
-	// DoneCh := make(chan bool , 2)
+func (cond SearchCondElem2) Op(col, op string, v interface{}) (result bool) {
 
-	// go func() {
-	// 	for {
-	// 		s, ok := <- keyState
-	// 		if !ok {
-	// 			DoneCh <- false
-	// 			return
-	// 		}
-	// 		if s != KeyStateRun {
-	// 			keyState <- s
-	// 			continue
-	// 		}
-	// 		break
-	// 	}
-	// 	// ここで処理?
+	if col != cond.Column().Name {
+		return false
+	}
 
-	// 	DonCh <- true
-	// }
+	if op != "==" {
+		return false
+	}
 
+	keys := cond.setKey(v)
+	_ = keys
+	finder := cond.getValue(col, StringOp[op])
+
+	return finder != nil
 }
 
 func (cond *SearchCond) Column() *Column {

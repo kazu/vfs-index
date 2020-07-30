@@ -130,7 +130,7 @@ func Test_SearchStringAll(t *testing.T) {
 
 	sCond := idx.On("test", vfs.ReaderColumn("name"), vfs.Output(vfs.MapInfOutput))
 
-	matches := sCond.Select(func(cond vfs.SearchCondElem) bool {
+	matches := sCond.Select2(func(cond vfs.SearchCondElem2) bool {
 		return cond.Op("name", "==", "無門会")
 	}).All()
 

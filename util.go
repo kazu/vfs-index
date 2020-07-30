@@ -1,6 +1,7 @@
 package vfsindex
 
 import (
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -82,7 +83,7 @@ type Decoder struct {
 	FileType  string
 	Decoder   func([]byte, interface{}) error
 	Encoder   func(interface{}) ([]byte, error)
-	Tokenizer func(io.Reader, *File) <-chan *Record
+	Tokenizer func(context.Context, io.Reader, *File) <-chan *Record
 }
 
 var CsvHeader string
@@ -106,7 +107,7 @@ var DefaultDecoder []Decoder = []Decoder{
 			// 	return field
 			return nil
 		},
-		Tokenizer: func(rio io.Reader, f *File) <-chan *Record {
+		Tokenizer: func(ctx context.Context, rio io.Reader, f *File) <-chan *Record {
 			ch := make(chan *Record, 5)
 
 			go func() {
@@ -152,14 +153,15 @@ var DefaultDecoder []Decoder = []Decoder{
 			return nil
 
 		},
-		Tokenizer: func(rio io.Reader, f *File) <-chan *Record {
-			ch := make(chan *Record, 5)
+		Tokenizer: func(ctx context.Context, rio io.Reader, f *File) <-chan *Record {
+			ch := make(chan *Record, 100)
 			go func() {
 				dec := json.NewDecoder(rio)
 
 				var rec *Record
 
 				nest := int(0)
+				defer close(ch)
 				for {
 					token, err := dec.Token()
 					if err == io.EOF {
@@ -179,8 +181,13 @@ var DefaultDecoder []Decoder = []Decoder{
 							ch <- rec
 						}
 					}
+					select {
+					case <-ctx.Done():
+						return
+					default:
+					}
 				}
-				close(ch)
+
 			}()
 			return ch
 		},

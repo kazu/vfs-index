@@ -131,3 +131,95 @@ func (s1 *SearchFinder) Last(opts ...ResultOpt) interface{} {
 	}
 	return opts[0](s1.c, recs[len(recs)-1])
 }
+
+type RecordFn func(map[int]bool) []*query.Record
+type SkipFn func(map[int]bool) map[int]bool
+type GetColumn func() *Column
+type SearchFinder2 struct {
+	column    GetColumn
+	recordFns []RecordFn
+	skipdFns  []SkipFn
+}
+
+func EmptySkip(o map[int]bool) map[int]bool {
+	return map[int]bool{}
+}
+
+func NewSearchFinder2(c *Column) *SearchFinder2 {
+
+	return &SearchFinder2{
+		column: func() *Column { return c },
+	}
+}
+
+func (sf *SearchFinder2) And(i int, key uint64) SkipFn {
+
+	return func(oskiped map[int]bool) (skiped map[int]bool) {
+		skiped = oskiped
+		records := sf.recordFns[i](skiped)
+		idx := OpenIndexFile(sf.column())
+		records2 := idx.RecordByKey(key)(map[int]bool{})
+
+		for j := range records {
+			if skiped[j] {
+				continue
+			}
+			found := false
+			for i := range records2 {
+				if records[j].FileId().Uint64() == records2[i].FileId().Uint64() {
+					found = true
+					break
+				}
+			}
+			if !found {
+				skiped[j] = true
+			}
+		}
+		return skiped
+	}
+}
+
+func (sf *SearchFinder2) All(opts ...ResultOpt) []interface{} {
+
+	opts = append(opts, ResultOutput(""))
+
+	result := []interface{}{}
+	for i, recFn := range sf.recordFns {
+		for _, rec := range recFn(sf.skipdFns[i](map[int]bool{})) {
+			result = append(result, opts[0](sf.column(), rec))
+		}
+	}
+
+	return result
+
+}
+func (sf *SearchFinder2) Records() (recs []*query.Record) {
+	for i := range sf.recordFns {
+		recs = append(recs, sf.recordFns[i](sf.skipdFns[i](map[int]bool{}))...)
+	}
+	return
+}
+
+func (sf *SearchFinder2) Count() int {
+	return len(sf.recordFns)
+}
+
+func (sf *SearchFinder2) First(opts ...ResultOpt) interface{} {
+
+	opts = append(opts, ResultOutput(""))
+
+	recs := sf.recordFns[0](sf.skipdFns[0](map[int]bool{}))
+
+	return opts[0](sf.column(), recs[0])
+
+}
+
+func (sf *SearchFinder2) Last(opts ...ResultOpt) interface{} {
+
+	opts = append(opts, ResultOutput(""))
+
+	idx := len(sf.recordFns) - 1
+	recs := sf.recordFns[idx](sf.skipdFns[idx](map[int]bool{}))
+
+	return opts[0](sf.column(), recs[len(recs)-1])
+}

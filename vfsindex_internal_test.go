@@ -1,9 +1,11 @@
 package vfsindex
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kazu/vfs-index/query"
 	"github.com/stretchr/testify/assert"
@@ -89,7 +91,7 @@ func Test_SearchCond_Select(t *testing.T) {
 	sCond := idx.On("test", ReaderColumn("id"), MergeOnSearch(false))
 
 	//str := sCond.FindBy("id", uint64(0xbfca7e)).First(ResultOutput("json")).(string)
-	str := sCond.Select(func(cond SearchCondElem) bool {
+	str := sCond.Select2(func(cond SearchCondElem2) bool {
 		return cond.Op("id", "==", uint64(0xbfca7e))
 	}).First(ResultOutput("json")).(string)
 	assert.NoError(t, e)
@@ -104,7 +106,7 @@ func Test_SearchCond_SelectGram(t *testing.T) {
 	sCond := idx.On("test", ReaderColumn("name"), MergeOnSearch(false))
 
 	//str := sCond.FindBy("id", uint64(0xbfca7e)).First(ResultOutput("json")).(string)
-	str := sCond.Select(func(cond SearchCondElem) bool {
+	str := sCond.Select2(func(cond SearchCondElem2) bool {
 		return cond.Op("name", "==", "無門会")
 	}).First(ResultOutput("json")).(string)
 	assert.NoError(t, e)
@@ -151,11 +153,14 @@ func Test_SearchCondQuery_FirstGram(t *testing.T) {
 
 func Test_IndexFile_Select(t *testing.T) {
 
-	CurrentLogLoevel = LOG_WARN
+	CurrentLogLoevel = LOG_DEBUG
+	s := time.Now()
 	idx, e := Open("/Users/xtakei/git/vfs-index/example/data",
 		RootDir("/Users/xtakei/git/vfs-index/example/vfs-tmp"))
+	fmt.Printf("open: elapse %s\n", time.Now().Sub(s))
 
 	sCond := idx.On("test", ReaderColumn("id"), MergeOnSearch(true))
+	fmt.Printf("On: elapse %s\n", time.Now().Sub(s))
 
 	c := sCond.Column()
 	finder := OpenIndexFile(c)
@@ -176,6 +181,7 @@ func Test_IndexFile_Select(t *testing.T) {
 			return CondTrue
 		}),
 		OptTraverse(func(f *IndexFile) error {
+
 			matches = append(matches, f)
 			if len(matches) == 100 {
 				return ErrStopTraverse
@@ -183,10 +189,59 @@ func Test_IndexFile_Select(t *testing.T) {
 			return nil
 		}),
 	)
+	fmt.Printf("Select1: elapse %s\n", time.Now().Sub(s))
 
 	assert.Error(t, e)
 	assert.True(t, len(matches) == 100)
 
+	sCond = idx.On("test", ReaderColumn("name"), MergeOnSearch(true))
+	fmt.Printf("On2: elapse %s\n", time.Now().Sub(s))
+	c = sCond.Column()
+	matches = []*IndexFile{}
+
+	f := OpenIndexFile(c)
+	k2rel := func(key uint64) (ret string) {
+		path := f.c.Key2Path(key, RECORD_WRITTEN)
+		ret, _ = filepath.Rel(filepath.Join(Opt.rootDir, f.c.TableDir()), path)
+		return
+	}
+	path, _ := filepath.Rel(filepath.Join(Opt.rootDir, f.c.TableDir()), filepath.Join(f.Path, "0045"))
+	isLess := LessEqString(k2rel(0x4500580000), path) && LessEqString(path, k2rel(0x4500582664))
+	_ = isLess
+
+	e = f.Select(
+		OptAsc(true),
+		OptRange(0, 0x4500582664),
+		OptCcondFn(func(f *IndexFile) CondType {
+			if f.Ftype == IdxFileType_None {
+				return CondSkip
+			}
+
+			if f.IsType(IdxFileType_NoComplete) {
+				return CondSkip
+			}
+			fmt.Printf("cond %s\n", f.Path)
+			if f.IsType(IdxFileType_Dir) {
+				return CondLazy
+			}
+
+			if f.IsType(IdxFileType_Merge) {
+				return CondSkip
+			}
+			return CondTrue
+		}),
+		OptTraverse(func(f *IndexFile) error {
+			fmt.Printf("match %s\n", f.Path)
+			matches = append(matches, f)
+			if len(matches) == 100 {
+				return ErrStopTraverse
+			}
+			return nil
+		}),
+	)
+	fmt.Printf("Select2: elapse %s\n", time.Now().Sub(s))
+	assert.NoError(t, e)
+	assert.Equal(t, 3, len(matches))
 }
 
 func Test_Recrod_ToFbs(t *testing.T) {
@@ -270,4 +325,105 @@ func Test_IndexFile_parentWith(t *testing.T) {
 		})
 	}
 
+}
+
+func Test_IndexFile_FindNearByKey(t *testing.T) {
+
+	CurrentLogLoevel = LOG_WARN
+	idx, _ := Open("/Users/xtakei/git/vfs-index/example/data",
+		RootDir("/Users/xtakei/git/vfs-index/example/vfs-tmp"))
+
+	sCond := idx.On("test", ReaderColumn("name"), MergeOnSearch(false))
+
+	c := sCond.Column()
+	finder := OpenIndexFile(c)
+
+	//file := "example/vfs-tmp/test/0045/0078/0045/name.gram.idx.004500780045-004500780045"
+	key := uint64(0x4500780050)
+
+	results := finder.FindNearByKey(key, true)
+
+	assert.True(t, key >= results[0].IdxInfo().first)
+
+	results = finder.FindNearByKey(key, false)
+	assert.True(t, key <= results[0].IdxInfo().first)
+}
+
+func Test_IndexFile_RecordByKey(t *testing.T) {
+
+	CurrentLogLoevel = LOG_WARN
+	idx, _ := Open("/Users/xtakei/git/vfs-index/example/data",
+		RootDir("/Users/xtakei/git/vfs-index/example/vfs-tmp"))
+
+	sCond := idx.On("test", ReaderColumn("name"), MergeOnSearch(false))
+
+	finder := OpenIndexFile(sCond.Column())
+
+	keys := TriKeys("ロシア人")
+
+	fn := finder.RecordByKey(keys[0])
+
+	//recs := fn(map[int]bool{})
+	//assert.True(t, len(recs) > 0)
+	sf2 := NewSearchFinder2(sCond.Column())
+	sf2.recordFns = append(sf2.recordFns, fn)
+	sf2.skipdFns = append(sf2.skipdFns, EmptySkip)
+	sf2.skipdFns[0] = sf2.And(0, keys[1])
+	results := sf2.All()
+
+	result := results[0].(map[string]interface{})
+	val := result[sCond.Column().Name].(string)
+
+	assert.True(t, len(val) > 0)
+	assert.Equal(t, "ロシア人喧嘩一発KO！.webm", val)
+}
+
+func Test_IndexFile_RecordNearByKey(t *testing.T) {
+
+	CurrentLogLoevel = LOG_WARN
+	idx, _ := Open("/Users/xtakei/git/vfs-index/example/data",
+		RootDir("/Users/xtakei/git/vfs-index/example/vfs-tmp"))
+
+	sCond := idx.On("test", ReaderColumn("name"), MergeOnSearch(false))
+
+	finder := OpenIndexFile(sCond.Column())
+
+	key := uint64(0x4500582660)
+
+	fn := finder.RecordNearByKey(key, true)
+
+	sf2 := NewSearchFinder2(sCond.Column())
+	sf2.recordFns = append(sf2.recordFns, fn)
+	sf2.skipdFns = append(sf2.skipdFns, EmptySkip)
+	results := sf2.All()
+
+	vals := []string{}
+
+	for i := range results {
+		result := results[i].(map[string]interface{})
+		val := result[sCond.Column().Name].(string)
+		vals = append(vals, val)
+	}
+
+	assert.Equal(t, 3, len(vals))
+	//assert.Equal(t, "ロシア人喧嘩一発KO！.webm", val)
+}
+
+func Test_IndexFile_Select2(t *testing.T) {
+
+	CurrentLogLoevel = LOG_WARN
+	idx, _ := Open("/Users/xtakei/git/vfs-index/example/data",
+		RootDir("/Users/xtakei/git/vfs-index/example/vfs-tmp"))
+
+	sCond := idx.On("test", ReaderColumn("name"), MergeOnSearch(false))
+
+	results := sCond.Select2(func(cond SearchCondElem2) bool {
+		return cond.Op("name", "==", "ロシア人")
+	}).All()
+
+	result := results[0].(map[string]interface{})
+	val := result[sCond.Column().Name].(string)
+
+	assert.True(t, len(val) > 0)
+	assert.Equal(t, "ロシア人喧嘩一発KO！.webm", val)
 }

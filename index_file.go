@@ -86,9 +86,12 @@ func (f *IndexFile) Init() {
 }
 
 type SelectOpt struct {
-	asc      bool
-	cond     CondFn
-	traverse TraverseFn
+	asc         bool
+	cond        CondFn
+	traverse    TraverseFn
+	start       uint64
+	last        uint64
+	enableRange bool
 }
 
 type SelectOption func(*SelectOpt)
@@ -119,7 +122,14 @@ func OptTraverse(fn TraverseFn) SelectOption {
 	return func(opt *SelectOpt) {
 		opt.traverse = fn
 	}
+}
 
+func OptRange(start, last uint64) SelectOption {
+	return func(opt *SelectOpt) {
+		opt.start = start
+		opt.last = last
+		opt.enableRange = true
+	}
 }
 
 func (opt *SelectOpt) Merge(opts []SelectOption) {
@@ -129,13 +139,26 @@ func (opt *SelectOpt) Merge(opts []SelectOption) {
 }
 
 func (f *IndexFile) Select(opts ...SelectOption) (err error) {
-	opt := SelectOpt{}
+	opt := SelectOpt{enableRange: false}
 	opt.Merge(opts)
 
 	names, err := readDirNames(f.Path)
 	names = sortAlphabet(names)
 	if !opt.asc {
 		sort.SliceStable(names, func(i, j int) bool { return i > j })
+	}
+
+	if opt.enableRange {
+		k2rel := func(key uint64) string {
+			path := f.c.Key2Path(key, RECORD_WRITTEN)
+			ret, _ := filepath.Rel(filepath.Join(Opt.rootDir, f.c.TableDir()), path)
+			return ret
+		}
+
+		loncha.Filter(&names, func(i int) bool {
+			path, _ := filepath.Rel(filepath.Join(Opt.rootDir, f.c.TableDir()), filepath.Join(f.Path, names[i]))
+			return LessEqString(k2rel(opt.start), path) && LessEqString(path, k2rel(opt.last))
+		})
 	}
 
 	afters := []*IndexFile{}
@@ -222,6 +245,29 @@ func (f *IndexFile) First() *IndexFile {
 		}
 	}
 	return nil
+}
+
+func LessEqString(s, d string) (isLess bool) {
+
+	defer func() {
+		if isLess {
+			Log(LOG_DEBUG, "%s < %s == %v\n", s, d, isLess)
+		} else {
+			//Log(LOG_DEBUG, "%s < %s == %v\n", s, d, isLess)
+		}
+	}()
+	limit := len(s)
+	if len(s) > len(d) {
+		limit = len(d)
+	}
+	for k := 0; k < limit; k++ {
+		if []rune(s)[k] == []rune(d)[k] {
+			continue
+		}
+		return []rune(s)[k] <= []rune(d)[k]
+	}
+
+	return true
 }
 
 func sortAlphabet(names []string) []string {
@@ -384,6 +430,100 @@ func readDirNames(dirname string) ([]string, error) {
 	return names, nil
 }
 
+func (f *IndexFile) RecordByKey(key uint64) RecordFn {
+
+	return func(skips map[int]bool) (records []*query.Record) {
+		idxs := f.FindByKey(key)
+		skipCur := 0
+		for _, idx := range idxs {
+			if idx.IsType(IdxFileType_Write) {
+				if skips[skipCur] {
+					skipCur++
+					continue
+				}
+				records = append(records, idx.KeyRecord().Value())
+			} else if idx.IsType(IdxFileType_Merge) {
+				kr := idx.KeyRecords().Find(func(kr *query.KeyRecord) bool {
+					return kr.Key().Uint64() == key
+				})
+				for i := 0; i < kr.Records().Count(); i++ {
+					if skips[skipCur+i] {
+						continue
+					}
+					r, _ := kr.Records().At(i)
+					records = append(records, r)
+				}
+			}
+		}
+		return
+	}
+}
+
+func (f *IndexFile) RecordNearByKey(key uint64, less bool) RecordFn {
+
+	return func(skips map[int]bool) (records []*query.Record) {
+		idxs := f.FindNearByKey(key, less)
+		if len(idxs) > 1 {
+			return f.RecordByKey(key)(skips)
+
+		}
+		defer func() {
+			Log(LOG_DEBUG, "recs=%v\n", records)
+		}()
+		skipCur := 0
+		idx := idxs[0]
+		var sidx, lidx *IndexFile
+
+		if less {
+			sidx = OpenIndexFile(f.c).First()
+			lidx = idx
+		} else {
+			sidx = idx
+			lidx = OpenIndexFile(f.c).Last()
+		}
+		//_ , _ = sidx, lidx
+		OpenIndexFile(f.c).Select(
+			OptAsc(less),
+			OptRange(sidx.IdxInfo().first, lidx.IdxInfo().last),
+			OptCcondFn(func(f *IndexFile) CondType {
+				//FIXME: merge index support
+				if f.IsType(IdxFileType_NoComplete) || f.IsType(IdxFileType_Merge) {
+					return CondSkip
+				} else if f.IsType(IdxFileType_Dir) {
+					return CondLazy
+				}
+				return CondTrue
+			}),
+			OptTraverse(func(f *IndexFile) error {
+				// 	return ErrStopTraverse
+				//defer func() { skipCur++ }()
+				if f.IsType(IdxFileType_Write) {
+					defer func() { skipCur++ }()
+					if skips[skipCur] {
+						return nil
+					}
+					records = append(records, f.KeyRecord().Value())
+				} else if f.IsType(IdxFileType_Merge) {
+					kr := f.KeyRecords().Find(func(kr *query.KeyRecord) bool {
+						return kr.Key().Uint64() == key
+					})
+					defer func() { skipCur += kr.Records().Count() }()
+					for i := 0; i < kr.Records().Count(); i++ {
+						if skips[skipCur+i] {
+							continue
+						}
+						r, _ := kr.Records().At(i)
+						records = append(records, r)
+					}
+				}
+				return nil
+			}),
+		)
+
+		return
+	}
+}
+
 func (f *IndexFile) FindByKey(key uint64) (result []*IndexFile) {
 
 	c := f.c
@@ -410,6 +550,87 @@ func (f *IndexFile) FindByKey(key uint64) (result []*IndexFile) {
 
 	return []*IndexFile{f.findAllFromMergeIdx(key)}
 
+}
+
+func (f *IndexFile) FindNearByKey(key uint64, less bool) (results []*IndexFile) {
+
+	results = f.FindByKey(key)
+	if len(results) > 0 && results[0] != nil {
+		return results
+	}
+	c := f.c
+	// if filepath.Join(Opt.rootDir, c.TableDir()) != f.Path {
+	// 	return nil //ErrNotIndexDir
+	// }
+	strkey := toFnameTri(key)
+	if c.IsNum {
+		strkey = toFname(key)
+	}
+	var result *IndexFile
+	//found := false
+	pat := ColumnPathWithStatus(c.TableDir(), c.Name, c.IsNum, strkey, strkey, RECORD_WRITTEN)
+	for {
+		dir := NewIndexFile(f.c, filepath.Dir(pat))
+		dir.Init()
+
+		e := dir.Select(
+			OptAsc(less),
+			OptCcondFn(func(f *IndexFile) CondType {
+				if f.IsType(IdxFileType_NoComplete) {
+					return CondSkip
+				} else if f.IsType(IdxFileType_Merge) {
+					return CondSkip
+				} else if f.IsType(IdxFileType_Dir) {
+					return CondLazy
+				}
+				return CondTrue
+			}),
+			OptTraverse(func(f *IndexFile) error {
+				if less {
+					if f.IdxInfo().first < key {
+						result = f
+					}
+					if f.IdxInfo().first > key {
+						return ErrStopTraverse
+					}
+				} else {
+					if f.IdxInfo().first > key {
+						result = f
+					}
+
+					if f.IdxInfo().first < key {
+						return ErrStopTraverse
+					}
+				}
+
+				// if !less && f.IdxInfo().first > key {
+				// 	result = f
+				// 	return ErrStopTraverse
+				// }
+				// if less && f.IdxInfo().last < key {
+				// 	result = f
+				// 	return ErrStopTraverse
+				// }
+				// result = f
+				// return nil
+				return nil
+			}),
+		)
+		if e != ErrStopTraverse {
+			result = nil
+		}
+		if result != nil {
+			break
+		}
+		if dir.Path == filepath.Join(Opt.rootDir, c.TableDir()) {
+			break
+		}
+		pat = filepath.Dir(pat)
+	}
+	if result == nil {
+		return nil
+	}
+	return []*IndexFile{result}
 }
 
 func (f *IndexFile) findAllFromMergeIdx(key uint64) *IndexFile {

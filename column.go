@@ -158,8 +158,9 @@ func (c *Column) Update(d time.Duration) error {
 }
 
 func (c *Column) updateFile(f *File) {
-
-	for r := range f.Records(c.Flist.Dir) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	for r := range f.Records(ctx, c.Flist.Dir) {
 		if !r.IsExist(c) {
 			c.Dirties = c.Dirties.Add(r)
 		}
@@ -373,7 +374,10 @@ func (c *Column) IsNumViaIndex() bool {
 			break
 		}
 	}
-	r := <-file.Records(c.Flist.Dir)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	r := <-file.Records(ctx, c.Flist.Dir)
+
 	r.caching(c)
 	if _, ok := r.cache[c.Name].(string); ok {
 		return false
@@ -925,6 +929,16 @@ func (c *Column) cRecordlist(n int) (records *query.RecordList) {
 	//i := n - c.cache.countInInfos()
 
 	return c.cache.recordlist(n)
+
+}
+
+func (c *Column) Key2Path(key uint64, state byte) string {
+
+	strkey := toFnameTri(key)
+	if c.IsNum {
+		strkey = toFname(key)
+	}
+	return ColumnPathWithStatus(c.TableDir(), c.Name, c.IsNum, strkey, strkey, state)
 
 }
 
