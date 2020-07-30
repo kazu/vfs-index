@@ -435,6 +435,9 @@ func (f *IndexFile) RecordByKey(key uint64) RecordFn {
 		idxs := f.FindByKey(key)
 		skipCur := 0
 		for _, idx := range idxs {
+			if idx == nil {
+				continue
+			}
 			if idx.IsType(IdxFileType_Write) {
 				if skips[skipCur] {
 					skipCur++
