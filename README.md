@@ -105,9 +105,8 @@ func DefaultOption() vfs.Option {
 idx, e := vfs.Open("/Users/xtakei/example/data", DefaultOption())
 sCond := idx.On("test", vfs.ReaderColumn("id"), vfs.Output(vfs.MapInfOutput))
 
-record := sCond.Select(func(m vfs.SearchCondElem) bool {
-		v := m.Get("id").(uint64)
-		return v < 122878513
+record := sCond.Select(func(m vfs.SearchCondElem2) bool {
+    return m.Op("id", "<",  122878513)
 }).First()
 
 // search by matching substring
@@ -124,7 +123,7 @@ stop after 1 minutes.
 
 idx, e := vfs.Open("/Users/xtakei/example/data", DefaultOption())
 sCond := idx.On("test", vfs.ReaderColumn("id"), vfs.Output(vfs.MapInfOutput))
-sCond.Searcher()
+sCond.StartMerging()
 time.Sleep(1 * time.Minute)
 sCond.CancelAndWait()
 ```
