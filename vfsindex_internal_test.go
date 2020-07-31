@@ -2,6 +2,7 @@ package vfsindex
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -11,13 +12,51 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_IndexFIle(t *testing.T) {
+func setup() {
 
 	CurrentLogLoevel = LOG_WARN
-	idx, e := Open("/Users/xtakei/git/vfs-index/example/data",
-		RootDir("/Users/xtakei/git/vfs-index/example/vfs-tmp"))
+	if FileExist(IdxDir) {
+		//os.RemoveAll(IdxDir)
+		return
+	}
+	idx, _ :=
+		Open(DataDir,
+			RootDir(IdxDir), MergeDuration(2*time.Second))
+	idx.Regist("test", "id")
+	idx.Regist("test", "title")
+	idx.Regist("test", "content")
+}
 
-	sCond := idx.On("test", ReaderColumn("name"), MergeOnSearch(false))
+func teardown() {
+	if FileExist(IdxDir) {
+		os.RemoveAll(IdxDir)
+	}
+}
+
+// func TestMain(m *testing.M) {
+// 	setup()
+// 	ret := m.Run()
+// 	if ret == 0 {
+// 		//teardown()
+// 	}
+// 	os.Exit(ret)
+// }
+
+const IdxDir string = "testdata/vfs-inter"
+const DataDir string = "testdata/data"
+const TestRoot string = "testdata"
+
+func Test_IndexFile(t *testing.T) {
+	setup()
+
+	CurrentLogLoevel = LOG_WARN
+	idx, e := Open(DataDir, RootDir(IdxDir))
+
+	sCond :=
+		idx.On("test",
+			MergeDuration(1*time.Second),
+			ReaderColumn("content"),
+			MergeOnSearch(false))
 
 	c := sCond.Column()
 	finder := OpenIndexFile(c)
@@ -32,17 +71,17 @@ func Test_IndexFIle(t *testing.T) {
 	kr2 := finder.Last().KeyRecord()
 	assert.Equal(t, kr2.Key().Uint64(), finder.Last().IdxInfo().last)
 
-	f := NewIndexFile(c, "/Users/xtakei/git/vfs-index/example/vfs-tmp/test/name.gram.idx.merged.00200020002e-00490020004c")
+	f := NewIndexFile(c, IdxDir+"test/content.gram.idx.merged.000a000a0023-003000385e74")
 	f.Init()
 
 	assert.True(t, f.IsType(IdxFileType_Merge))
-	assert.Equal(t, uint64(0x00200020002e), f.IdxInfo().first)
+	assert.Equal(t, uint64(0x000a000a0023), f.IdxInfo().first)
 
-	f = NewIndexFile(c, "/Users/xtakei/git/vfs-index/example/vfs-tmp/test/0000/bfca/7e/id.num.idx.0000bfca7e-0000bfca7e.0001483950.0000000f02")
+	f = NewIndexFile(c, IdxDir+"/test/0033/0039/0053/id.num.idx.003300390053-003300390053.00064507ea.0000000004")
 	f.Init()
 
 	assert.Equal(t, IdxFileType_None, f.Ftype)
-	f = NewIndexFile(c, "/Users/xtakei/git/vfs-index/example/vfs-tmp/test/ff61/30d9/30c3/name.gram.idx.ff6130d930c3-ff6130d930c3.00014829a5.000003f5b1")
+	f = NewIndexFile(c, IdxDir+"/test/0033/0033/0035/content.gram.idx.003300330035-003300330035.00064507ea.0000000004")
 	f.Init()
 	a := f.KeyRecord().Key().Int64()
 	_ = a
@@ -51,33 +90,38 @@ func Test_IndexFIle(t *testing.T) {
 }
 func Test_FindByKey_IndexFIle(t *testing.T) {
 
+	setup()
+
 	CurrentLogLoevel = LOG_WARN
-	idx, e := Open("/Users/xtakei/git/vfs-index/example/data",
-		RootDir("/Users/xtakei/git/vfs-index/example/vfs-tmp"))
+	idx, e := Open(DataDir,
+		RootDir(IdxDir))
 
 	sCond := idx.On("test", ReaderColumn("id"), MergeOnSearch(true))
 
 	c := sCond.Column()
 	finder := OpenIndexFile(c)
 
-	f := finder.FindByKey(0xbfca7e)
+	f := finder.FindByKey(1944369)
 
 	assert.NoError(t, e)
-	assert.NotNil(t, uint64(0xbfca7e), f[0].IdxInfo().first)
+	assert.NotNil(t, uint64(1944369), f[0].IdxInfo().first)
 
-	f = finder.FindByKey(0xbfca7c)
+	f = finder.FindByKey(3301755)
 
-	assert.NotNil(t, uint64(0xbfca7c), f[0].IdxInfo().first)
+	assert.NotNil(t, uint64(3301755), f[0].IdxInfo().first)
 }
 
 func Test_SearchCond_First(t *testing.T) {
+
+	setup()
+
 	CurrentLogLoevel = LOG_WARN
-	idx, e := Open("/Users/xtakei/git/vfs-index/example/data",
-		RootDir("/Users/xtakei/git/vfs-index/example/vfs-tmp"))
+	idx, e := Open(DataDir,
+		RootDir(IdxDir))
 
 	sCond := idx.On("test", ReaderColumn("id"), MergeOnSearch(false))
 
-	str := sCond.FindBy("id", uint64(0xbfca7e)).First(ResultOutput("json")).(string)
+	str := sCond.FindBy("id", uint64(132763)).First(ResultOutput("json")).(string)
 
 	assert.NoError(t, e)
 	assert.True(t, len(str) > 0)
@@ -85,14 +129,13 @@ func Test_SearchCond_First(t *testing.T) {
 
 func Test_SearchCond_Select(t *testing.T) {
 	CurrentLogLoevel = LOG_WARN
-	idx, e := Open("/Users/xtakei/git/vfs-index/example/data",
-		RootDir("/Users/xtakei/git/vfs-index/example/vfs-tmp"))
+	idx, e := Open(DataDir,
+		RootDir(IdxDir))
 
 	sCond := idx.On("test", ReaderColumn("id"), MergeOnSearch(false))
 
-	//str := sCond.FindBy("id", uint64(0xbfca7e)).First(ResultOutput("json")).(string)
 	str := sCond.Select2(func(cond SearchCondElem2) bool {
-		return cond.Op("id", "==", uint64(0xbfca7e))
+		return cond.Op("id", "==", uint64(1944367))
 	}).First(ResultOutput("json")).(string)
 	assert.NoError(t, e)
 	assert.True(t, len(str) > 0)
@@ -100,27 +143,30 @@ func Test_SearchCond_Select(t *testing.T) {
 
 func Test_SearchCond_SelectGram(t *testing.T) {
 	CurrentLogLoevel = LOG_WARN
-	idx, e := Open("/Users/xtakei/git/vfs-index/example/data",
-		RootDir("/Users/xtakei/git/vfs-index/example/vfs-tmp"))
+	setup()
 
-	sCond := idx.On("test", ReaderColumn("name"), MergeOnSearch(false))
+	idx, e := Open(DataDir,
+		RootDir(IdxDir))
 
-	//str := sCond.FindBy("id", uint64(0xbfca7e)).First(ResultOutput("json")).(string)
+	sCond := idx.On("test", ReaderColumn("title"), MergeOnSearch(false))
+
 	str := sCond.Select2(func(cond SearchCondElem2) bool {
-		return cond.Op("name", "==", "無門会")
+		return cond.Op("title", "==", "拉致問")
 	}).First(ResultOutput("json")).(string)
+
 	assert.NoError(t, e)
 	assert.True(t, len(str) > 0)
+
 }
 
 func Test_SearchCond_FirstGram(t *testing.T) {
 	CurrentLogLoevel = LOG_WARN
-	idx, e := Open("/Users/xtakei/git/vfs-index/example/data",
-		RootDir("/Users/xtakei/git/vfs-index/example/vfs-tmp"))
+	idx, e := Open(DataDir,
+		RootDir(IdxDir))
 
-	sCond := idx.On("test", ReaderColumn("name"), MergeOnSearch(false))
+	sCond := idx.On("test", ReaderColumn("title"), MergeOnSearch(false))
 
-	str := sCond.FindBy("name", "無門会").First(ResultOutput("json")).(string)
+	str := sCond.FindBy("title", "拉致問").First(ResultOutput("json")).(string)
 
 	assert.NoError(t, e)
 	assert.True(t, len(str) > 0)
@@ -140,25 +186,26 @@ func Test_IndexFile_Init(t *testing.T) {
 
 func Test_SearchCondQuery_FirstGram(t *testing.T) {
 	CurrentLogLoevel = LOG_WARN
-	idx, e := Open("/Users/xtakei/git/vfs-index/example/data",
-		RootDir("/Users/xtakei/git/vfs-index/example/vfs-tmp"))
+	idx, e := Open(DataDir,
+		RootDir(IdxDir))
 
-	sCond := idx.On("test", ReaderColumn("name"), MergeOnSearch(false))
+	sCond := idx.On("test", ReaderColumn("title"), MergeOnSearch(false))
 
-	str := sCond.Query2(`name == "無門会"`).First(ResultOutput("json")).(string)
+	str := sCond.Query2(`title == "拉致問"`).First(ResultOutput("json")).(string)
 
 	assert.NoError(t, e)
 	assert.True(t, len(str) > 0)
 }
 
+//FIXME:  dosent work RecordNearByKey in merged index
 func Test_SearchCondQueryLess_FirstGram(t *testing.T) {
 	CurrentLogLoevel = LOG_WARN
-	idx, e := Open("/Users/xtakei/git/vfs-index/example/data",
-		RootDir("/Users/xtakei/git/vfs-index/example/vfs-tmp"))
+	idx, e := Open(DataDir,
+		RootDir(IdxDir))
 
-	sCond := idx.On("test", ReaderColumn("name"), MergeOnSearch(false))
+	sCond := idx.On("test", ReaderColumn("title"), MergeOnSearch(false))
 
-	str := sCond.Query2(`name <= "無門会"`).First(ResultOutput("json")).(string)
+	str := sCond.Query2(`title <= "拉致問"`).First(ResultOutput("json")).(string)
 
 	assert.NoError(t, e)
 	assert.True(t, len(str) > 0)
@@ -168,8 +215,8 @@ func Test_IndexFile_Select(t *testing.T) {
 
 	CurrentLogLoevel = LOG_DEBUG
 	s := time.Now()
-	idx, e := Open("/Users/xtakei/git/vfs-index/example/data",
-		RootDir("/Users/xtakei/git/vfs-index/example/vfs-tmp"))
+	idx, e := Open(DataDir,
+		RootDir(IdxDir))
 	fmt.Printf("open: elapse %s\n", time.Now().Sub(s))
 
 	sCond := idx.On("test", ReaderColumn("id"), MergeOnSearch(true))
