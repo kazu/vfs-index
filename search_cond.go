@@ -267,17 +267,15 @@ func (f *SearchCond) Match(s string) *SearchFinder {
 
 func (cond *SearchCond) Select2(fn func(SearchCondElem2) bool) (sfinder *SearchFinder2) {
 
+	// s := time.Now()
+	// defer func() {
+	// 	fmt.Printf("Select2(): elapsed=%s", time.Now().Sub(s))
+	// }()
+
 	c := cond.idxCol
 	idxFinder := OpenIndexFile(c)
-	first := idxFinder.First()
-	last := idxFinder.Last()
-	_, _ = first, last
 
 	sfinder2 := NewSearchFinder2(cond.Column())
-	// frec := first.FirstRecord()
-	// frec.caching(c)
-	// lrec := last.LastRecord()
-	// lrec.caching(c)
 
 	keys := []uint64{}
 
@@ -309,7 +307,9 @@ func (cond *SearchCond) Select2(fn func(SearchCondElem2) bool) (sfinder *SearchF
 					sfind.skipdFns = append(sfind.skipdFns, EmptySkip)
 				}
 				lastIdx := len(sfind.recordFns) - 1
-				sfind.skipdFns[lastIdx] = sfind.And(lastIdx, key)
+				if i > 0 {
+					sfind.skipdFns[lastIdx] = sfind.And(lastIdx, key)
+				}
 			}
 		case CondOpLe, CondOpLt:
 			for i, key := range keys {
@@ -318,7 +318,9 @@ func (cond *SearchCond) Select2(fn func(SearchCondElem2) bool) (sfinder *SearchF
 					sfind.skipdFns = append(sfind.skipdFns, EmptySkip)
 				}
 				lastIdx := len(sfind.recordFns) - 1
-				sfind.skipdFns[lastIdx] = sfind.And(lastIdx, key)
+				if i > 0 {
+					sfind.skipdFns[lastIdx] = sfind.And(lastIdx, key)
+				}
 			}
 		case CondOpGe, CondOpGt:
 			for i, key := range keys {
@@ -327,7 +329,9 @@ func (cond *SearchCond) Select2(fn func(SearchCondElem2) bool) (sfinder *SearchF
 					sfind.skipdFns = append(sfind.skipdFns, EmptySkip)
 				}
 				lastIdx := len(sfind.recordFns) - 1
-				sfind.skipdFns[lastIdx] = sfind.And(lastIdx, key)
+				if i > 0 {
+					sfind.skipdFns[lastIdx] = sfind.And(lastIdx, key)
+				}
 			}
 		}
 		sfinder = sfind

@@ -219,7 +219,6 @@ func (sf *SearchFinder2) First(opts ...ResultOpt) interface{} {
 	}
 
 	recs := sf.recordFns[0](sf.skipdFns[0](map[int]bool{}))
-
 	return opts[0](sf.column(), recs[0])
 
 }
