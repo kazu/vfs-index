@@ -137,6 +137,18 @@ func (opt *SelectOpt) Merge(opts []SelectOption) {
 		opts[i](opt)
 	}
 }
+func ListMergedIndex(c *Column, fn CondFn, opts ...SelectOption) (result []*IndexFile) {
+
+	OpenIndexFile(c).Select(
+		OptAsc(true),
+		OptCcondFn(fn),
+		OptTraverse(func(f *IndexFile) error {
+			result = append(result, f)
+			return nil
+		}),
+	)
+	return
+}
 
 func (f *IndexFile) Select(opts ...SelectOption) (err error) {
 	opt := SelectOpt{enableRange: false}
@@ -465,28 +477,77 @@ func (f *IndexFile) RecordNearByKey(key uint64, less bool) RecordFn {
 
 	return func(skips map[int]bool) (records []*query.Record) {
 		idxs := f.FindNearByKey(key, less)
-		if len(idxs) > 1 {
-			return f.RecordByKey(key)(skips)
+		// if len(idxs) > 1 {
+		// 	return f.RecordByKey(key)(skips)
 
-		}
+		// }
 		defer func() {
 			Log(LOG_DEBUG, "recs=%v\n", records)
 		}()
 		skipCur := 0
-		idx := idxs[0]
-		var sidx, lidx *IndexFile
+		//idx := idxs[0]
+		var sidx, lidx uint64
+
+		loncha.Delete(&idxs, func(i int) bool {
+			return idxs[i].IsType(IdxFileType_Merge)
+		})
+
+		midxs := ListMergedIndex(f.c, func(f *IndexFile) CondType {
+			if f.IsType(IdxFileType_NoComplete) {
+				return CondSkip
+			}
+			if f.IsType(IdxFileType_Merge) {
+				//return CondTrue
+				if less && f.IdxInfo().first < key {
+					return CondTrue
+				}
+				if !less && f.IdxInfo().last > key {
+					return CondTrue
+				}
+			}
+			return CondSkip
+		})
+		for i := range midxs {
+			idx := midxs[i]
+			kr := idx.KeyRecords().Find(func(kr *query.KeyRecord) bool {
+				if less && (kr.Key().Uint64() <= key) {
+					return true
+				}
+				if !less && (kr.Key().Uint64() >= key) {
+					return true
+				}
+				return false
+			})
+			//defer func() { skipCur += kr.Records().Count() }()
+			for i := 0; i < kr.Records().Count(); i++ {
+				if skips[skipCur+i] {
+					continue
+				}
+				r, _ := kr.Records().At(i)
+				records = append(records, r)
+			}
+			skipCur += kr.Records().Count()
+		}
 
 		if less {
-			sidx = OpenIndexFile(f.c).First()
-			lidx = idx
+			sidx = OpenIndexFile(f.c).First().IdxInfo().first
+			lidx = key
+
+			if len(midxs) > 0 {
+				sidx = midxs[len(midxs)-1].IdxInfo().last + 1
+			}
+
 		} else {
-			sidx = idx
-			lidx = OpenIndexFile(f.c).Last()
+			sidx = key
+			lidx = OpenIndexFile(f.c).Last().IdxInfo().last
+			if len(midxs) > 0 {
+				sidx = midxs[len(midxs)-1].IdxInfo().last + 1
+			}
 		}
 		//_ , _ = sidx, lidx
 		OpenIndexFile(f.c).Select(
 			OptAsc(less),
-			OptRange(sidx.IdxInfo().first, lidx.IdxInfo().last),
+			OptRange(sidx, lidx),
 			OptCcondFn(func(f *IndexFile) CondType {
 				//FIXME: merge index support
 				if f.IsType(IdxFileType_NoComplete) || f.IsType(IdxFileType_Merge) {

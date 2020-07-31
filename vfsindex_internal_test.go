@@ -160,6 +160,8 @@ func Test_SearchCond_SelectGram(t *testing.T) {
 }
 
 func Test_SearchCond_FirstGram(t *testing.T) {
+	setup()
+
 	CurrentLogLoevel = LOG_WARN
 	idx, e := Open(DataDir,
 		RootDir(IdxDir))
@@ -185,6 +187,8 @@ func Test_IndexFile_Init(t *testing.T) {
 }
 
 func Test_SearchCondQuery_FirstGram(t *testing.T) {
+	setup()
+
 	CurrentLogLoevel = LOG_WARN
 	idx, e := Open(DataDir,
 		RootDir(IdxDir))
@@ -197,8 +201,9 @@ func Test_SearchCondQuery_FirstGram(t *testing.T) {
 	assert.True(t, len(str) > 0)
 }
 
-//FIXME:  dosent work RecordNearByKey in merged index
 func Test_SearchCondQueryLess_FirstGram(t *testing.T) {
+	setup()
+
 	CurrentLogLoevel = LOG_WARN
 	idx, e := Open(DataDir,
 		RootDir(IdxDir))
@@ -212,6 +217,7 @@ func Test_SearchCondQueryLess_FirstGram(t *testing.T) {
 }
 
 func Test_IndexFile_Select(t *testing.T) {
+	setup()
 
 	CurrentLogLoevel = LOG_DEBUG
 	s := time.Now()
@@ -219,7 +225,7 @@ func Test_IndexFile_Select(t *testing.T) {
 		RootDir(IdxDir))
 	fmt.Printf("open: elapse %s\n", time.Now().Sub(s))
 
-	sCond := idx.On("test", ReaderColumn("id"), MergeOnSearch(true))
+	sCond := idx.On("test", ReaderColumn("content"), MergeOnSearch(true))
 	fmt.Printf("On: elapse %s\n", time.Now().Sub(s))
 
 	c := sCond.Column()
@@ -254,7 +260,7 @@ func Test_IndexFile_Select(t *testing.T) {
 	assert.Error(t, e)
 	assert.True(t, len(matches) == 100)
 
-	sCond = idx.On("test", ReaderColumn("name"), MergeOnSearch(true))
+	sCond = idx.On("test", ReaderColumn("content"), MergeOnSearch(true))
 	fmt.Printf("On2: elapse %s\n", time.Now().Sub(s))
 	c = sCond.Column()
 	matches = []*IndexFile{}
@@ -300,8 +306,8 @@ func Test_IndexFile_Select(t *testing.T) {
 		}),
 	)
 	fmt.Printf("Select2: elapse %s\n", time.Now().Sub(s))
-	assert.NoError(t, e)
-	assert.Equal(t, 3, len(matches))
+	assert.Error(t, e)
+	assert.Equal(t, 100, len(matches))
 }
 
 func Test_Recrod_ToFbs(t *testing.T) {
@@ -327,24 +333,25 @@ func Test_Recrod_ToFbs(t *testing.T) {
 }
 
 func Test_IndexFile_parentWith(t *testing.T) {
+	setup()
 
 	CurrentLogLoevel = LOG_DEBUG
-	idx, _ := Open("/Users/xtakei/git/vfs-index/example/data",
-		RootDir("/Users/xtakei/git/vfs-index/example/vfs-tmp"))
+	idx, _ := Open(DataDir,
+		RootDir(IdxDir))
 
-	sCond := idx.On("test", ReaderColumn("name"), MergeOnSearch(false))
+	sCond := idx.On("test", ReaderColumn("content"), MergeOnSearch(false))
 
 	c := sCond.Column()
 
-	f1 := NewIndexFile(c, "example/vfs-tmp/test/9060/304f/308d/name.gram.idx.9060304f308d-9060304f308d.00014829a5.00000346db")
+	f1 := NewIndexFile(c, "testdata/vfs-inter/test/ff1a/0031/0038/content.gram.idx.ff1a00310038-ff1a00310038.00064507ea.0000000004")
 	f1.Init()
 
-	f2 := NewIndexFile(c, "example/vfs-tmp/test/9060/0029/0020/name.gram.idx.906000290020-906000290020.00014829a5.0000003bfa")
+	f2 := NewIndexFile(c, "testdata/vfs-inter/test/ff1a/7b2c/0031/content.gram.idx.ff1a7b2c0031-ff1a7b2c0031.00064507ea.0000000004")
 	f2.Init()
 
 	f3 := f1.parentWith(f2)
 
-	assert.Equal(t, f3.Path, "example/vfs-tmp/test/9060")
+	assert.Equal(t, f3.Path, "testdata/vfs-inter/test/ff1a")
 
 	d := NewIndexFile(c, f3.Path)
 	d.Init()
@@ -361,16 +368,16 @@ func Test_IndexFile_parentWith(t *testing.T) {
 		path2 string
 	}{
 		{
-			"example/vfs-tmp/test/0045/0058/0020/name.gram.idx.004500580020-004500580020.00014829a5.0000042963",
-			"example/vfs-tmp/test/ff5e/9ed2/30ae/name.gram.idx.ff5e9ed230ae-ff5e9ed230ae.00014829a5.0000035c6f",
+			"testdata/vfs-inter/test/0045/0066/006e/content.gram.idx.00450066006e-00450066006e.00064507ea.0000000004",
+			"testdata/vfs-inter/test/ff5e/005b/005b/content.gram.idx.ff5e005b005b-ff5e005b005b.00064507ea.0000000004",
 		},
 		{
-			"example/vfs-tmp/test/0049/0043/0020/name.gram.idx.004900430020-004900430020.00014829a5.000001107a",
-			"example/vfs-tmp/test/004c/7248/005d/name.gram.idx.004c7248005d-004c7248005d.00014829a5.0000042633",
+			"testdata/vfs-inter/test/0049/0041/007d/content.gram.idx.00490041007d-00490041007d.00064507ea.0000000004",
+			"testdata/vfs-inter/test/004c/0075/0063/content.gram.idx.004c00750063-004c00750063.00064507ea.000000e786",
 		},
 		{
-			"example/vfs-tmp/test/0049/0043/0020/name.gram.idx.004900430020-004900430020.00014829a5.000000fd15",
-			"example/vfs-tmp/test/0058/30c1/30e3/name.gram.idx.005830c130e3-005830c130e3.00014829a5.000003b8e3",
+			"testdata/vfs-inter/test/0049/004e/003a/content.gram.idx.0049004e003a-0049004e003a.00064507ea.0000000004",
+			"testdata/vfs-inter/test/0059/0054/0041/content.gram.idx.005900540041-005900540041.00064507ea.0000000004",
 		},
 	}
 
@@ -388,43 +395,43 @@ func Test_IndexFile_parentWith(t *testing.T) {
 }
 
 func Test_IndexFile_FindNearByKey(t *testing.T) {
+	setup()
 
 	CurrentLogLoevel = LOG_WARN
-	idx, _ := Open("/Users/xtakei/git/vfs-index/example/data",
-		RootDir("/Users/xtakei/git/vfs-index/example/vfs-tmp"))
+	idx, _ := Open(DataDir,
+		RootDir(IdxDir))
 
-	sCond := idx.On("test", ReaderColumn("name"), MergeOnSearch(false))
+	sCond := idx.On("test", ReaderColumn("title"), MergeOnSearch(false))
 
 	c := sCond.Column()
 	finder := OpenIndexFile(c)
 
 	//file := "example/vfs-tmp/test/0045/0078/0045/name.gram.idx.004500780045-004500780045"
-	key := uint64(0x4500780050)
+	key := TriKeys("拉致問")[0] + 1
 
 	results := finder.FindNearByKey(key, true)
 
 	assert.True(t, key >= results[0].IdxInfo().first)
 
 	results = finder.FindNearByKey(key, false)
-	assert.True(t, key <= results[0].IdxInfo().first)
+	assert.True(t, key <= results[0].IdxInfo().last)
 }
 
 func Test_IndexFile_RecordByKey(t *testing.T) {
+	setup()
 
 	CurrentLogLoevel = LOG_WARN
-	idx, _ := Open("/Users/xtakei/git/vfs-index/example/data",
-		RootDir("/Users/xtakei/git/vfs-index/example/vfs-tmp"))
+	idx, _ := Open(DataDir,
+		RootDir(IdxDir))
 
-	sCond := idx.On("test", ReaderColumn("name"), MergeOnSearch(false))
+	sCond := idx.On("test", ReaderColumn("title"), MergeOnSearch(false))
 
 	finder := OpenIndexFile(sCond.Column())
 
-	keys := TriKeys("ロシア人")
+	keys := TriKeys("拉致問題")
 
 	fn := finder.RecordByKey(keys[0])
 
-	//recs := fn(map[int]bool{})
-	//assert.True(t, len(recs) > 0)
 	sf2 := NewSearchFinder2(sCond.Column())
 	sf2.recordFns = append(sf2.recordFns, fn)
 	sf2.skipdFns = append(sf2.skipdFns, EmptySkip)
@@ -435,20 +442,21 @@ func Test_IndexFile_RecordByKey(t *testing.T) {
 	val := result[sCond.Column().Name].(string)
 
 	assert.True(t, len(val) > 0)
-	assert.Equal(t, "ロシア人喧嘩一発KO！.webm", val)
+	assert.Equal(t, "北朝鮮による日本人拉致問題", val)
 }
 
 func Test_IndexFile_RecordNearByKey(t *testing.T) {
+	setup()
 
 	CurrentLogLoevel = LOG_WARN
-	idx, _ := Open("/Users/xtakei/git/vfs-index/example/data",
-		RootDir("/Users/xtakei/git/vfs-index/example/vfs-tmp"))
+	idx, _ := Open(DataDir,
+		RootDir(IdxDir))
 
-	sCond := idx.On("test", ReaderColumn("name"), MergeOnSearch(false))
+	sCond := idx.On("test", ReaderColumn("content"), MergeOnSearch(false))
 
 	finder := OpenIndexFile(sCond.Column())
 
-	key := uint64(0x4500582660)
+	key := uint64(0x5300740075)
 
 	fn := finder.RecordNearByKey(key, true)
 
@@ -465,25 +473,25 @@ func Test_IndexFile_RecordNearByKey(t *testing.T) {
 		vals = append(vals, val)
 	}
 
-	assert.Equal(t, 3, len(vals))
-	//assert.Equal(t, "ロシア人喧嘩一発KO！.webm", val)
+	assert.Equal(t, 2, len(vals))
 }
 
 func Test_IndexFile_Select2(t *testing.T) {
+	setup()
 
 	CurrentLogLoevel = LOG_WARN
-	idx, _ := Open("/Users/xtakei/git/vfs-index/example/data",
-		RootDir("/Users/xtakei/git/vfs-index/example/vfs-tmp"))
+	idx, _ := Open(DataDir,
+		RootDir(IdxDir))
 
-	sCond := idx.On("test", ReaderColumn("name"), MergeOnSearch(false))
+	sCond := idx.On("test", ReaderColumn("title"), MergeOnSearch(false))
 
 	results := sCond.Select2(func(cond SearchCondElem2) bool {
-		return cond.Op("name", "==", "ロシア人")
+		return cond.Op("title", "==", "拉致問")
 	}).All()
 
 	result := results[0].(map[string]interface{})
 	val := result[sCond.Column().Name].(string)
 
 	assert.True(t, len(val) > 0)
-	assert.Equal(t, "ロシア人喧嘩一発KO！.webm", val)
+	assert.Equal(t, "北朝鮮による日本人拉致問題", val)
 }
