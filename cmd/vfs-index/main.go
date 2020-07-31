@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"os"
@@ -26,6 +27,7 @@ vfs-index
 	-column		column name for index  
 	-table		table name for index. prefix name in data file
 	-data		data directory
+	-qstdin		string search via STDIN, if qstdin is set, ignore -q flag
 	-q		search query 
 				example)  
 					string search: 		'name.search("foobar")'
@@ -53,12 +55,14 @@ func main() {
 		//flag.Parse(os.Args[:2])
 	}
 	var indexDir, column, table, dir, query string
-	var first, help, nomerge bool
+	var first, help, nomerge, qstdin bool
 	flagCmd.StringVar(&indexDir, "index", "./vfs", "directory of index")
 	flagCmd.StringVar(&column, "column", "id", "column name")
 	flagCmd.StringVar(&table, "table", "table", "table name")
 	flagCmd.StringVar(&dir, "data", "./", "datadir")
 	flagCmd.StringVar(&query, "q", "", "search query")
+	flagCmd.BoolVar(&qstdin, "qstdin", false, "string search by stdin")
+
 	flagCmd.BoolVar(&first, "f", false, "only output one record")
 	flagCmd.BoolVar(&help, "h", false, "help")
 	flagCmd.BoolVar(&nomerge, "nomerge", false, "not merge index on search")
@@ -76,6 +80,11 @@ func main() {
 	case "index":
 		indexing(indexDir, column, table, dir)
 	case "search":
+		if qstdin {
+			line, _, _ := bufio.NewReader(os.Stdin).ReadLine()
+			query = fmt.Sprintf("%s.search(\"%s\")", column, line)
+		}
+
 		search(query, indexDir, column, table, dir, first, nomerge)
 	case "merge":
 		merge(indexDir, column, table, dir)
