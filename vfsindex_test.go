@@ -109,7 +109,7 @@ func Test_SearchStringAll(t *testing.T) {
 	}).All()
 
 	assert.NoError(t, e)
-	assert.True(t, 0 < len(matches))
+	assert.True(t, 0 < len(matches.([]interface{})))
 
 	matches2 := sCond.Match("渡辺麻友").All()
 

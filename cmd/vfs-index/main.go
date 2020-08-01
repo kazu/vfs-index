@@ -155,9 +155,7 @@ func search(query, indexDir, column, table, dir string, first, nomerge bool) {
 		fmt.Printf("%s\n", result)
 	} else {
 		results := sCond.Query2(query).All(vfs.ResultOutput("json"))
-		for _, result := range results {
-			fmt.Printf("%s\n", result)
-		}
+		fmt.Printf("%s\n", results)
 	}
 	sCond.CancelAndWait()
 

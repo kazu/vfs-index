@@ -1,11 +1,13 @@
 package vfsindex
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/kazu/vfs-index/query"
 	"github.com/kazu/vfs-index/vfs_schema"
@@ -128,6 +130,7 @@ func (r *Record) caching(c *Column) {
 	}
 
 	data := r.Raw(c)
+
 	if data == nil {
 		Log(LOG_WARN, "fail got data r=%+v\n", r)
 		return
@@ -157,10 +160,24 @@ func (r *Record) Raw(c *Column) (data []byte) {
 		// FIXME: remove from Column.Dirties
 		return nil
 	}
+
 	data = make([]byte, r.size)
 	if n, e := f.ReadAt(data, r.offset); e != nil || int64(n) != r.size {
 		Log(LOG_WARN, "%s is nvalid data: should remove from Column.Dirties \n", path)
 		return nil
+	}
+
+	dec, _ := GetDecoder(path)
+	if dec.FileType == "csv" {
+		dummy := make(map[string]interface{})
+
+		if e := dec.Decoder(data, &dummy); e == ErrMustCsvHeader {
+			ctx, cancel := context.WithCancel(context.Background())
+			<-dec.Tokenizer(ctx, f,
+				&File{id: 123, name: path, index_at: time.Now().UnixNano()})
+			cancel()
+		}
+		dummy = nil
 	}
 
 	return data
@@ -212,6 +229,8 @@ func (r *Record) write(c *Column, w IdxWriter) error {
 }
 
 func (r *Record) parse(raw []byte, dec Decoder) {
+
+	r.cache = make(map[string]interface{})
 
 	e := dec.Decoder(raw, &r.cache)
 

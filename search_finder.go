@@ -103,12 +103,9 @@ func (s1 *SearchFinder) All(opts ...ResultOpt) []interface{} {
 	}
 	opts = append(opts, ResultOutput(""))
 
-	result := []interface{}{}
-	for _, rec := range s1.Records() {
-		result = append(result, opts[0](s1.c, rec))
-	}
+	result := opts[0](s1.c, s1.Records())
 
-	return result
+	return result.([]interface{})
 }
 
 func (s1 *SearchFinder) First(opts ...ResultOpt) interface{} {
@@ -120,7 +117,7 @@ func (s1 *SearchFinder) First(opts ...ResultOpt) interface{} {
 	if recs == nil {
 		return nil
 	}
-	return opts[0](s1.c, recs[0])
+	return opts[0](s1.c, []*query.Record{recs[0]})
 }
 
 func (s1 *SearchFinder) Last(opts ...ResultOpt) interface{} {
@@ -132,7 +129,7 @@ func (s1 *SearchFinder) Last(opts ...ResultOpt) interface{} {
 	if recs == nil {
 		return nil
 	}
-	return opts[0](s1.c, recs[len(recs)-1])
+	return opts[0](s1.c, []*query.Record{recs[len(recs)-1]})
 }
 
 type RecordFn func(map[int]bool) []*query.Record
@@ -182,21 +179,19 @@ func (sf *SearchFinder2) And(i int, key uint64) SkipFn {
 	}
 }
 
-func (sf *SearchFinder2) All(opts ...ResultOpt) []interface{} {
+func (sf *SearchFinder2) All(opts ...ResultOpt) interface{} {
 
 	opts = append(opts, ResultOutput(""))
-
-	result := []interface{}{}
 
 	recs := sf.Records()
 	loncha.Uniq(&recs, func(i int) interface{} {
 		return fmt.Sprintf("0x%x0x%x", recs[i].FileId().Uint64(), recs[i].Offset().Int64())
 	})
-	for i := range recs {
-		result = append(result, opts[0](sf.column(), recs[i]))
-	}
+	// for i := range recs {
+	// 	result = append(result, opts[0](sf.column(), recs[i]))
+	// }
 
-	return result
+	return opts[0](sf.column(), recs)
 
 }
 func (sf *SearchFinder2) Records() (recs []*query.Record) {
@@ -219,7 +214,7 @@ func (sf *SearchFinder2) First(opts ...ResultOpt) interface{} {
 	}
 
 	recs := sf.recordFns[0](sf.skipdFns[0](map[int]bool{}))
-	return opts[0](sf.column(), recs[0])
+	return opts[0](sf.column(), []*query.Record{recs[0]})
 
 }
 
@@ -234,5 +229,5 @@ func (sf *SearchFinder2) Last(opts ...ResultOpt) interface{} {
 	idx := len(sf.recordFns) - 1
 	recs := sf.recordFns[idx](sf.skipdFns[idx](map[int]bool{}))
 
-	return opts[0](sf.column(), recs[len(recs)-1])
+	return opts[0](sf.column(), []*query.Record{recs[len(recs)-1]})
 }

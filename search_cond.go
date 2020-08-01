@@ -416,23 +416,31 @@ func (cond *SearchCond) StartMerging() {
 	}
 }
 
-type ResultOpt func(*Column, *query.Record) interface{}
+type ResultOpt func(*Column, []*query.Record) interface{}
 
 func ResultOutput(name string) ResultOpt {
 
-	return func(c *Column, rec *query.Record) interface{} {
-		r := &Record{
-			fileID: rec.FileId().Uint64(),
-			offset: rec.Offset().Int64(),
-			size:   rec.Size().Int64(),
+	return func(c *Column, qrecs []*query.Record) interface{} {
+
+		result := make([]interface{}, len(qrecs))
+		for i, qrec := range qrecs {
+			rec := &Record{
+				fileID: qrec.FileId().Uint64(),
+				offset: qrec.Offset().Int64(),
+				size:   qrec.Size().Int64(),
+			}
+			rec.caching(c)
+			result[i] = rec.cache
 		}
-		r.caching(c)
-		if name == "json" {
-			fname, _ := c.Flist.FPath(r.fileID)
-			enc, _ := GetDecoder(fname)
-			raw, _ := enc.Encoder(r.cache)
+		if len(name) == 0 {
+			return result
+		}
+
+		if name == "json" || name == "csv" {
+			enc, _ := GetDecoder("." + name)
+			raw, _ := enc.Encoder(result)
 			return string(raw)
 		}
-		return r.cache
+		return result
 	}
 }
