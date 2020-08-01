@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 
 	vfs "github.com/kazu/vfs-index"
@@ -54,7 +53,7 @@ Flags:
 	-q,-query	search query 
 				example)  
 					string search: 		'name.search("foobar")'
-					numeric condition:	'id == 23456'
+					numeric condition:	'id == 23456' or 'id < 23456' ...
 	-h,-help    help for search
 `
 
@@ -155,9 +154,7 @@ func indexing(opt CmdOpt) {
 	vfs.CurrentLogLoevel = vfs.LOG_WARN
 	//vfs.CurrentLogLoevel = vfs.LOG_DEBUG
 
-	cur, _ := os.Getwd()
-	vopt := vfs.RootDir(filepath.Join(cur, opt.indexDir))
-	idx, e := vfs.Open(filepath.Join(cur, opt.indexDir), vopt, vfs.RegitConcurrent(8))
+	idx, e := vfs.Open(opt.dir, vfs.RootDir(opt.indexDir), vfs.RegitConcurrent(8))
 
 	if e != nil {
 		fmt.Printf("E: Open(%s) fail errpr=%s\n", opt.dir, e)
@@ -170,9 +167,7 @@ func merge(opt CmdOpt) {
 	vfs.CurrentLogLoevel = vfs.LOG_WARN
 	//vfs.CurrentLogLoevel = vfs.LOG_DEBUG
 
-	cur, _ := os.Getwd()
-	vopt := vfs.RootDir(filepath.Join(cur, opt.indexDir))
-	idx, e := vfs.Open(filepath.Join(cur, opt.dir), vopt)
+	idx, e := vfs.Open(opt.dir, vfs.RootDir(opt.indexDir))
 
 	if e != nil {
 		fmt.Printf("E: Open(%s) fail errpr=%s\n", opt.dir, e)
@@ -191,14 +186,14 @@ func search(opt CmdOpt) {
 	vfs.CurrentLogLoevel = vfs.LOG_WARN
 
 	vfs.CurrentLogLoevel = vfs.LOG_ERROR
-	cur, _ := os.Getwd()
+	//cur, _ := os.Getwd()
 
 	q, _ := expr.GetExpr(opt.query)
 	if len(q.Column) > 0 {
 		opt.column = q.Column
 	}
 
-	idx, e := vfs.Open(filepath.Join(cur, opt.dir), vfs.RootDir(filepath.Join(cur, opt.indexDir)))
+	idx, e := vfs.Open(opt.dir, vfs.RootDir(opt.indexDir))
 	if e != nil {
 		fmt.Printf("E: Open(%s) fail errpr=%s\n", opt.dir, e)
 	}
