@@ -195,7 +195,7 @@ func (idx *Indexer) setCsvDecoder() {
 					//FIXME; type check in this
 					iv, err := strconv.Atoi(data[i])
 					if err == nil {
-						(*value)[csvHeaders[i]] = iv
+						(*value)[csvHeaders[i]] = uint64(iv)
 					} else {
 						(*value)[csvHeaders[i]] = data[i]
 					}
@@ -217,7 +217,6 @@ func (idx *Indexer) setCsvDecoder() {
 						if err != nil {
 							return
 						}
-						fmt.Printf("csvHeaders=%+v\n", csvHeaders)
 						offset = int64(len(text)) + 1
 					}
 

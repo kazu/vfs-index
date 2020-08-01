@@ -12,31 +12,73 @@ import (
 	"github.com/kazu/vfs-index/expr"
 )
 
-const Usage string = `
-vfs-index ... indexer/search in vfs data(json,csv)
-Usage: vfs-indx <subcmd> <Flags>
-vfs-index
-  subcmd 
+const Usage string = `vfs-index ... indexer/search in vfs data(json,csv)
+
+Usage: 
+	vfs-indx [command]
+
+Available Commands:
 	index		index data
 	search		search data
 	merge		merge index (only 1 minute)
 
-  Flags:
+Flags:
+	-h,-help    help for vfs-index
+
+`
+const UsageIndex string = `create index
+
+Usage:
+	vfs-index index
+
+Flags:	
 	-index  	directory for index data
-	-h     		help for vfs-index
 	-column		column name for index  
 	-table		table name for index. prefix name in data file
 	-data		data directory
+	-h,-help    help for index
+`
+
+const UsageSearch string = `Search index
+
+Usage:
+	vfs-index search
+
+Flags:	
+	-index  	directory for index data
+	-column		column name for index  
+	-table		table name for index. prefix name in data file
+	-data		data directory
+	-output 	output format, json, csv available. Default: json 
 	-qstdin		string search via STDIN, if qstdin is set, ignore -q flag
-	-q		search query 
+	-q,-query	search query 
 				example)  
 					string search: 		'name.search("foobar")'
 					numeric condition:	'id == 23456'
+	-h,-help    help for search
 `
+
+const UsageMerge string = `Merge splited index file
+
+Usage:
+	vfs-index merge
+
+Flags:	
+	-index  	directory for index data
+	-column		column name for index  
+	-table		table name for index. prefix name in data file
+	-data		data directory
+	-h,-help    help for merge
+`
+
+type CmdOpt struct {
+	indexDir, column, table, dir, query, output string
+	first, help, nomerge, qstdin                bool
+}
 
 func main() {
 
-	if len(os.Args) == 1 {
+	if len(os.Args) < 2 {
 		fmt.Println(Usage)
 		return
 	}
@@ -51,75 +93,91 @@ func main() {
 		flagCmd = flag.NewFlagSet("search", flag.ExitOnError)
 	case "merge":
 		flagCmd = flag.NewFlagSet("merge", flag.ExitOnError)
-		//search(query, indexDir, column, table, dir, first)
-		//flag.Parse(os.Args[:2])
 	}
-	var indexDir, column, table, dir, query string
-	var first, help, nomerge, qstdin bool
-	flagCmd.StringVar(&indexDir, "index", "./vfs", "directory of index")
-	flagCmd.StringVar(&column, "column", "id", "column name")
-	flagCmd.StringVar(&table, "table", "table", "table name")
-	flagCmd.StringVar(&dir, "data", "./", "datadir")
-	flagCmd.StringVar(&query, "q", "", "search query")
-	flagCmd.BoolVar(&qstdin, "qstdin", false, "string search by stdin")
+	opt := CmdOpt{}
 
-	flagCmd.BoolVar(&first, "f", false, "only output one record")
-	flagCmd.BoolVar(&help, "h", false, "help")
-	flagCmd.BoolVar(&nomerge, "nomerge", false, "not merge index on search")
+	flagCmd.StringVar(&opt.indexDir, "index", "./vfs", "directory of index")
+	flagCmd.StringVar(&opt.column, "column", "id", "column name")
+	flagCmd.StringVar(&opt.table, "table", "table", "table name")
+	flagCmd.StringVar(&opt.dir, "data", "./", "datadir")
+
+	flagCmd.StringVar(&opt.query, "query", "", "search query")
+	flagCmd.StringVar(&opt.query, "q", "", "search query"+"(shorthand)")
+	flagCmd.BoolVar(&opt.qstdin, "qstdin", false, "string search by stdin")
+
+	flagCmd.BoolVar(&opt.first, "only-first", false, "only output one record")
+	flagCmd.BoolVar(&opt.first, "f", false, "only output one record"+"()shorthand")
+
+	flagCmd.BoolVar(&opt.nomerge, "nomerge", false, "not merge index on search")
+
+	flagCmd.StringVar(&opt.output, "output", "json", "output format")
+	flagCmd.StringVar(&opt.output, "o", "json", "output format"+"()shorthand")
+
+	flagCmd.BoolVar(&opt.help, "help", false, "help")
+	flagCmd.BoolVar(&opt.help, "h", false, "help (shorthand)")
 
 	flagCmd.Parse(os.Args[2:])
 
-	//fmt.Printf("%v %v %v %v\n", indexDir, column, table, dir)
-	//return
-	if help {
-		fmt.Println(Usage)
-		return
-	}
-
 	switch flagCmd.Name() {
 	case "index":
-		indexing(indexDir, column, table, dir)
-	case "search":
-		if qstdin {
-			line, _, _ := bufio.NewReader(os.Stdin).ReadLine()
-			query = fmt.Sprintf("%s.search(\"%s\")", column, line)
+		if opt.help || len(os.Args) < 3 {
+			fmt.Println(UsageIndex)
+			return
 		}
-
-		search(query, indexDir, column, table, dir, first, nomerge)
+		indexing(opt)
+	case "search":
+		if opt.help || len(os.Args) < 3 {
+			fmt.Println(UsageSearch)
+			return
+		}
+		if opt.qstdin {
+			line, _, _ := bufio.NewReader(os.Stdin).ReadLine()
+			opt.query = fmt.Sprintf("%s.search(\"%s\")", opt.column, line)
+		}
+		search(opt)
 	case "merge":
-		merge(indexDir, column, table, dir)
+		if opt.help || len(os.Args) < 3 {
+			fmt.Println(UsageMerge)
+			return
+		}
+		merge(opt)
+	default:
+		if opt.help {
+			fmt.Println(Usage)
+			return
+		}
 	}
 
 	return
 }
 
-func indexing(indexDir, column, table, dir string) {
+func indexing(opt CmdOpt) {
 	vfs.CurrentLogLoevel = vfs.LOG_WARN
 	//vfs.CurrentLogLoevel = vfs.LOG_DEBUG
 
 	cur, _ := os.Getwd()
-	opt := vfs.RootDir(filepath.Join(cur, indexDir))
-	idx, e := vfs.Open(filepath.Join(cur, dir), opt, vfs.RegitConcurrent(8))
+	vopt := vfs.RootDir(filepath.Join(cur, opt.indexDir))
+	idx, e := vfs.Open(filepath.Join(cur, opt.indexDir), vopt, vfs.RegitConcurrent(8))
 
 	if e != nil {
-		fmt.Printf("E: Open(%s) fail errpr=%s\n", dir, e)
+		fmt.Printf("E: Open(%s) fail errpr=%s\n", opt.dir, e)
 	}
-	e = idx.Regist(table, column)
+	e = idx.Regist(opt.table, opt.column)
 
 }
 
-func merge(indexDir, column, table, dir string) {
+func merge(opt CmdOpt) {
 	vfs.CurrentLogLoevel = vfs.LOG_WARN
 	//vfs.CurrentLogLoevel = vfs.LOG_DEBUG
 
 	cur, _ := os.Getwd()
-	opt := vfs.RootDir(filepath.Join(cur, indexDir))
-	idx, e := vfs.Open(filepath.Join(cur, dir), opt)
+	vopt := vfs.RootDir(filepath.Join(cur, opt.indexDir))
+	idx, e := vfs.Open(filepath.Join(cur, opt.dir), vopt)
 
 	if e != nil {
-		fmt.Printf("E: Open(%s) fail errpr=%s\n", dir, e)
+		fmt.Printf("E: Open(%s) fail errpr=%s\n", opt.dir, e)
 	}
-	sCond := idx.On(table, vfs.ReaderColumn(column),
+	sCond := idx.On(opt.table, vfs.ReaderColumn(opt.column),
 		//vfs.MergeDuration(1*time.Second),
 		vfs.MergeOnSearch(true))
 
@@ -129,44 +187,31 @@ func merge(indexDir, column, table, dir string) {
 
 }
 
-func search(query, indexDir, column, table, dir string, first, nomerge bool) {
+func search(opt CmdOpt) {
 	vfs.CurrentLogLoevel = vfs.LOG_WARN
 
 	vfs.CurrentLogLoevel = vfs.LOG_ERROR
 	cur, _ := os.Getwd()
 
-	q, _ := expr.GetExpr(query)
+	q, _ := expr.GetExpr(opt.query)
 	if len(q.Column) > 0 {
-		column = q.Column
+		opt.column = q.Column
 	}
 
-	idx, e := vfs.Open(filepath.Join(cur, dir), vfs.RootDir(filepath.Join(cur, indexDir)))
+	idx, e := vfs.Open(filepath.Join(cur, opt.dir), vfs.RootDir(filepath.Join(cur, opt.indexDir)))
 	if e != nil {
-		fmt.Printf("E: Open(%s) fail errpr=%s\n", dir, e)
+		fmt.Printf("E: Open(%s) fail errpr=%s\n", opt.dir, e)
 	}
 
-	//ival, e := strconv.ParseUint(query, 10, 64)
+	sCond := idx.On(opt.table, vfs.ReaderColumn(opt.column), vfs.MergeOnSearch(!opt.nomerge))
 
-	sCond := idx.On(table, vfs.ReaderColumn(column), vfs.MergeOnSearch(!nomerge))
-	//info = sCond.Query(query)
-
-	if first {
-		result := sCond.Query2(query).First(vfs.ResultOutput("json"))
+	if opt.first {
+		result := sCond.Query2(opt.query).First(vfs.ResultOutput(opt.output))
 		fmt.Printf("%s\n", result)
 	} else {
-		results := sCond.Query2(query).All(vfs.ResultOutput("json"))
+		results := sCond.Query2(opt.query).All(vfs.ResultOutput(opt.output))
 		fmt.Printf("%s\n", results)
 	}
 	sCond.CancelAndWait()
 
-	// if first {
-	// 	result := sCond.ToJsonStr(info.First())
-	// 	fmt.Printf("%s\n", result)
-	// } else {
-	// 	results := sCond.ToJsonStrs(info.All())
-	// 	for _, result := range results {
-	// 		fmt.Printf("%s\n", result)
-	// 	}
-	// }
-	//sCond.CancelAndWait()
 }

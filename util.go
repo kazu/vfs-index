@@ -1,6 +1,7 @@
 package vfsindex
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"encoding/json"
@@ -136,7 +137,14 @@ var DefaultDecoder []Decoder = []Decoder{
 	Decoder{
 		FileType: "json",
 		Encoder: func(v interface{}) ([]byte, error) {
-			return json.Marshal(v)
+			b, e := json.Marshal(v)
+			if e != nil {
+				return b, e
+			}
+			var out bytes.Buffer
+			json.Indent(&out, b, "", "\t")
+			return out.Bytes(), e
+
 		},
 		Decoder: func(raw []byte, v interface{}) error {
 			e := json.Unmarshal(raw, v)
