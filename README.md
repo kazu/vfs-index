@@ -140,6 +140,6 @@ sCond.CancelAndWait()
 - [x] support string search
 - [x] support index merging
 - [x] add comment
-- [ ] csv support 
+- [x] csv support 
 - [ ] msgpack support
 - [ ] support compression data (  lz4(?) )

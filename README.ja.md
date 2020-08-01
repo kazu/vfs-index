@@ -109,7 +109,6 @@ sCond.CancelAndWait()
 - [x] 文字列検索の検索の実装
 - [x] index merging のサポート
 - [x] コメント、ライセンス追加
-- [ ] csv のsupport
+- [x] csv のsupport
 - [ ] msgpack のsupport
-- [ ] dirty list のcontainer-list 化
 - [ ] support lz4(?)
