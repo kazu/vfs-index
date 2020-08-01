@@ -13,6 +13,7 @@ type optionState struct {
 	idxMergeOnSearch bool
 	cntConcurrent    int
 	mergeDuration    time.Duration
+	customDecoders   []Decoder
 }
 
 //type ReaderOpt map[string]string

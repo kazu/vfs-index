@@ -1,7 +1,9 @@
 package vfsindex
 
 import (
+	"context"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -139,6 +141,13 @@ func Test_SearchCond_Select(t *testing.T) {
 	}).First(ResultOutput("json")).(string)
 	assert.NoError(t, e)
 	assert.True(t, len(str) > 0)
+
+	str = sCond.Select2(func(cond SearchCondElem2) bool {
+		return cond.Op("id", "==", uint64(1944367))
+	}).First(ResultOutput("csv")).(string)
+	fmt.Printf("%s\n", str)
+	assert.True(t, len(str) > 0)
+
 }
 
 func Test_SearchCond_SelectGram(t *testing.T) {
@@ -436,7 +445,7 @@ func Test_IndexFile_RecordByKey(t *testing.T) {
 	sf2.recordFns = append(sf2.recordFns, fn)
 	sf2.skipdFns = append(sf2.skipdFns, EmptySkip)
 	sf2.skipdFns[0] = sf2.And(0, keys[1])
-	results := sf2.All()
+	results := sf2.All().([]interface{})
 
 	result := results[0].(map[string]interface{})
 	val := result[sCond.Column().Name].(string)
@@ -463,8 +472,9 @@ func Test_IndexFile_RecordNearByKey(t *testing.T) {
 	sf2 := NewSearchFinder2(sCond.Column())
 	sf2.recordFns = append(sf2.recordFns, fn)
 	sf2.skipdFns = append(sf2.skipdFns, EmptySkip)
-	results := sf2.All()
+	alls := sf2.All()
 
+	results := alls.([]interface{})
 	vals := []string{}
 
 	for i := range results {
@@ -487,11 +497,47 @@ func Test_IndexFile_Select2(t *testing.T) {
 
 	results := sCond.Select2(func(cond SearchCondElem2) bool {
 		return cond.Op("title", "==", "拉致問")
-	}).All()
+	}).All().([]interface{})
 
 	result := results[0].(map[string]interface{})
 	val := result[sCond.Column().Name].(string)
 
 	assert.True(t, len(val) > 0)
 	assert.Equal(t, "北朝鮮による日本人拉致問題", val)
+}
+
+func Test_Parse_CSV(t *testing.T) {
+	setup()
+
+	CurrentLogLoevel = LOG_WARN
+	idx, _ := Open(DataDir,
+		RootDir(IdxDir))
+
+	sCond := idx.On("test", ReaderColumn("title"), MergeOnSearch(false))
+	_ = sCond
+
+	dec, e := GetDecoder("test.1.csv")
+	assert.NoError(t, e)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	fname := DataDir + "/test.1.csv"
+	f, e := os.Open(fname)
+	assert.NoError(t, e)
+
+	var rec *Record
+	for r := range dec.Tokenizer(ctx, f, &File{id: 123, name: fname, index_at: time.Now().UnixNano()}) {
+		rec = r
+	}
+	cancel()
+	f.Close()
+	ff, _ := os.Open(fname)
+	raw, _ := ioutil.ReadAll(ff)
+	ff.Close()
+	raw = raw[rec.offset : rec.offset+rec.size]
+
+	data := make(map[string]interface{})
+	e = dec.Decoder(raw, &data)
+	assert.NoError(t, e)
+	assert.Equal(t, "ぺこぱ", data["title"].(string))
 }

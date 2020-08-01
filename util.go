@@ -202,6 +202,13 @@ func GetDecoder(fname string) (dec Decoder, e error) {
 
 	ext := filepath.Ext(fname)[1:]
 
+	cidx, e := loncha.IndexOf(Opt.customDecoders, func(i int) bool {
+		return Opt.customDecoders[i].FileType == ext
+	})
+	if e == nil {
+		return Opt.customDecoders[cidx], nil
+	}
+
 	idx, e := loncha.IndexOf(DefaultDecoder, func(i int) bool {
 		return DefaultDecoder[i].FileType == ext
 	})
@@ -211,6 +218,22 @@ func GetDecoder(fname string) (dec Decoder, e error) {
 	}
 	return DefaultDecoder[idx], nil
 
+}
+func setDecuoder(ext string, dec Decoder) (e error) {
+	if len(ext) < 1 {
+		return ErrParameterInvalid
+	}
+
+	idx, e := loncha.IndexOf(Opt.customDecoders, func(i int) bool {
+		return Opt.customDecoders[i].FileType == ext
+	})
+	if e != nil {
+		Opt.customDecoders[idx] = dec
+		return nil
+	} else {
+		Opt.customDecoders = append(Opt.customDecoders, dec)
+		return nil
+	}
 }
 
 func globcachePath(pat string) string {

@@ -1,12 +1,18 @@
 package vfsindex
 
 import (
+	"bufio"
+	"bytes"
+	"context"
+	"encoding/csv"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
-	//"/github.com/kazu/loncha"
+
+	"github.com/kazu/loncha"
 )
 
 type LogLevel int
@@ -59,6 +65,7 @@ func Open(dpath string, opts ...Option) (*Indexer, error) {
 	//mergeOpt(&Opt, RootDir(dpath))
 
 	idx := &Indexer{Root: dpath, Cols: make(map[string]*Column)}
+	idx.setCsvDecoder()
 	return idx, nil
 }
 
@@ -96,6 +103,139 @@ func (idx *Indexer) On(table string, opts ...Option) *SearchCond {
 	}
 
 	return cond
+}
+
+func (idx *Indexer) setCsvDecoder() {
+
+	var csvHeaders []string
+
+	setDecuoder("csv",
+		Decoder{
+			FileType: "csv",
+			Encoder: func(ov interface{}) ([]byte, error) {
+				header := []string{}
+				if len(csvHeaders) > 0 {
+					header = csvHeaders
+				}
+				getHeader := func(data map[string]interface{}) (head []string) {
+					for key, _ := range data {
+						head = append(head, key)
+					}
+					return
+				}
+
+				writeLine := func(w *csv.Writer, head []string, data map[string]interface{}) error {
+					line := make([]string, len(head))
+
+					for key, infv := range data {
+						idx, e := loncha.IndexOf(head, func(i int) bool {
+							return head[i] == key
+						})
+						if e != nil {
+							continue
+						}
+						if v, ok := infv.(string); ok {
+							line[idx] = strconv.QuoteToGraphic(v)
+							//line[idx] = strings.Replace(v, "\n", "\\n", -1)
+						}
+						if v, ok := infv.(uint64); ok {
+							line[idx] = fmt.Sprintf("%d", v)
+						}
+					}
+					w.Write(line)
+
+					return nil
+				}
+				b := bytes.NewBuffer([]byte{})
+				w := csv.NewWriter(b)
+
+				switch data := ov.(type) {
+				case []interface{}:
+					if len(data) > 0 && len(header) == 0 {
+						header = getHeader(data[0].(map[string]interface{}))
+					}
+					w.Write(header)
+
+					for _, line := range data {
+						d, ok := line.(map[string]interface{})
+						if !ok {
+							continue
+						}
+						writeLine(w, header, d)
+					}
+					w.Flush()
+					return b.Bytes(), nil
+				case map[string]interface{}:
+					if len(header) == 0 {
+						header = getHeader(data)
+					}
+					w.Write(header)
+					writeLine(w, header, data)
+					w.Flush()
+					return b.Bytes(), nil
+				}
+
+				return nil, ErrNotSupported //json.Marshal(v)
+			},
+			Decoder: func(raw []byte, v interface{}) error {
+				if len(csvHeaders) == 0 {
+					return ErrMustCsvHeader
+				}
+
+				value, ok := v.(*(map[string]interface{}))
+				if !ok {
+					return ErrNotSupported
+				}
+				r := csv.NewReader(bytes.NewBuffer(raw))
+				data, e := r.Read()
+				if e != nil && e != io.EOF {
+					return e
+				}
+				for i := range data {
+					//FIXME; type check in this
+					iv, err := strconv.Atoi(data[i])
+					if err == nil {
+						(*value)[csvHeaders[i]] = iv
+					} else {
+						(*value)[csvHeaders[i]] = data[i]
+					}
+				}
+				return nil
+			},
+			Tokenizer: func(ctx context.Context, rio io.Reader, f *File) <-chan *Record {
+				ch := make(chan *Record, 5)
+				go func() {
+					//buf, err := ioutil.ReadAll(rio)
+					var err error
+					offset := int64(0)
+					//size := int64(0)
+					defer close(ch)
+					scanner := bufio.NewScanner(rio)
+					if scanner.Scan() {
+						text := scanner.Text()
+						csvHeaders, err = csv.NewReader(strings.NewReader(text)).Read()
+						if err != nil {
+							return
+						}
+						fmt.Printf("csvHeaders=%+v\n", csvHeaders)
+						offset = int64(len(text)) + 1
+					}
+
+					for scanner.Scan() {
+						text := scanner.Text()
+						ch <- &Record{fileID: f.id, offset: offset, size: int64(len(text))}
+						offset += int64(len(text)) + 1
+						select {
+						case <-ctx.Done():
+							return
+						default:
+						}
+					}
+				}()
+				return ch
+			},
+		},
+	)
 }
 
 func (idx *Indexer) openFileList(table string) (flist *FileList, err error) {
