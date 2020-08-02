@@ -188,7 +188,16 @@ func search(opt CmdOpt) {
 	vfs.CurrentLogLoevel = vfs.LOG_ERROR
 	//cur, _ := os.Getwd()
 
-	q, _ := expr.GetExpr(opt.query)
+	if len(opt.query) == 0 {
+		fmt.Fprint(os.Stderr, "Search: query is empty\n")
+		return
+	}
+
+	q, e := expr.GetExpr(opt.query)
+	if e != nil {
+		fmt.Fprintf(os.Stderr, "Search: fail parse query\n")
+		return
+	}
 	if len(q.Column) > 0 {
 		opt.column = q.Column
 	}
