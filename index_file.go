@@ -443,7 +443,7 @@ func readDirNames(dirname string) ([]string, error) {
 
 func (f *IndexFile) RecordByKey(key uint64) RecordFn {
 
-	return func(skips map[int]bool) (records []*query.Record) {
+	return func(skipFn SkipFn) (records []*query.Record) {
 		idxs := f.FindByKey(key)
 		skipCur := 0
 		for _, idx := range idxs {
@@ -451,22 +451,24 @@ func (f *IndexFile) RecordByKey(key uint64) RecordFn {
 				continue
 			}
 			if idx.IsType(IdxFileType_Write) {
-				if skips[skipCur] {
+				if skipFn(EmptySkip, skipCur) {
 					skipCur++
 					continue
 				}
 				records = append(records, idx.KeyRecord().Value())
+				skipCur++
 			} else if idx.IsType(IdxFileType_Merge) {
 				kr := idx.KeyRecords().Find(func(kr *query.KeyRecord) bool {
 					return kr.Key().Uint64() == key
 				})
 				for i := 0; i < kr.Records().Count(); i++ {
-					if skips[skipCur+i] {
+					if skipFn(EmptySkip, skipCur+i) {
 						continue
 					}
 					r, _ := kr.Records().At(i)
 					records = append(records, r)
 				}
+				skipCur += kr.Records().Count()
 			}
 		}
 		return
@@ -475,12 +477,9 @@ func (f *IndexFile) RecordByKey(key uint64) RecordFn {
 
 func (f *IndexFile) RecordNearByKey(key uint64, less bool) RecordFn {
 
-	return func(skips map[int]bool) (records []*query.Record) {
+	return func(skipFn SkipFn) (records []*query.Record) {
 		idxs := f.FindNearByKey(key, less)
-		// if len(idxs) > 1 {
-		// 	return f.RecordByKey(key)(skips)
 
-		// }
 		defer func() {
 			Log(LOG_DEBUG, "recs=%v\n", records)
 		}()
@@ -520,7 +519,7 @@ func (f *IndexFile) RecordNearByKey(key uint64, less bool) RecordFn {
 			})
 			//defer func() { skipCur += kr.Records().Count() }()
 			for i := 0; i < kr.Records().Count(); i++ {
-				if skips[skipCur+i] {
+				if skipFn(EmptySkip, skipCur+i) {
 					continue
 				}
 				r, _ := kr.Records().At(i)
@@ -562,7 +561,7 @@ func (f *IndexFile) RecordNearByKey(key uint64, less bool) RecordFn {
 				//defer func() { skipCur++ }()
 				if f.IsType(IdxFileType_Write) {
 					defer func() { skipCur++ }()
-					if skips[skipCur] {
+					if skipFn(EmptySkip, skipCur) {
 						return nil
 					}
 					records = append(records, f.KeyRecord().Value())
@@ -572,7 +571,7 @@ func (f *IndexFile) RecordNearByKey(key uint64, less bool) RecordFn {
 					})
 					defer func() { skipCur += kr.Records().Count() }()
 					for i := 0; i < kr.Records().Count(); i++ {
-						if skips[skipCur+i] {
+						if skipFn(EmptySkip, skipCur+i) {
 							continue
 						}
 						r, _ := kr.Records().At(i)

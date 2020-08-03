@@ -466,6 +466,7 @@ func Test_IndexFile_RecordNearByKey(t *testing.T) {
 	finder := OpenIndexFile(sCond.Column())
 
 	key := uint64(0x5300740075)
+	//key := uint64(0x0a000a0033)
 
 	fn := finder.RecordNearByKey(key, true)
 
@@ -483,7 +484,7 @@ func Test_IndexFile_RecordNearByKey(t *testing.T) {
 		vals = append(vals, val)
 	}
 
-	assert.Equal(t, 2, len(vals))
+	assert.Equal(t, 22, len(vals))
 }
 
 func Test_IndexFile_Select2(t *testing.T) {

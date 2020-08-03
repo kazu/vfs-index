@@ -132,8 +132,8 @@ func (s1 *SearchFinder) Last(opts ...ResultOpt) interface{} {
 	return opts[0](s1.c, []*query.Record{recs[len(recs)-1]})
 }
 
-type RecordFn func(map[int]bool) []*query.Record
-type SkipFn func(map[int]bool) map[int]bool
+type RecordFn func(SkipFn) []*query.Record
+type SkipFn func(SkipFn, int) bool
 type GetColumn func() *Column
 type SearchFinder2 struct {
 	column    GetColumn
@@ -141,8 +141,8 @@ type SearchFinder2 struct {
 	skipdFns  []SkipFn
 }
 
-func EmptySkip(o map[int]bool) map[int]bool {
-	return map[int]bool{}
+func EmptySkip(fn SkipFn, i int) bool {
+	return false
 }
 
 func NewSearchFinder2(c *Column) *SearchFinder2 {
@@ -152,18 +152,38 @@ func NewSearchFinder2(c *Column) *SearchFinder2 {
 	}
 }
 
+func (sf *SearchFinder2) Limit(n int) SkipFn {
+
+	skiped := map[int]bool{}
+	return func(oFn SkipFn, k int) bool {
+		if n-len(skiped) < k {
+			return false
+		}
+		if oFn(EmptySkip, k) {
+			skiped[k] = true
+		}
+		return skiped[k]
+	}
+
+}
 func (sf *SearchFinder2) And(i int, key uint64) SkipFn {
 
-	return func(oskiped map[int]bool) (skiped map[int]bool) {
-		skiped = oskiped
-		records := sf.recordFns[i](skiped)
+	var records []*query.Record
+	var records2 []*query.Record
+
+	return func(oFn SkipFn, k int) bool {
+		if len(records) == 0 {
+			records = sf.recordFns[i](oFn)
+		}
 		idx := OpenIndexFile(sf.column())
-		records2 := idx.RecordByKey(key)(map[int]bool{})
+		if len(records2) == 0 {
+			records2 = idx.RecordByKey(key)(oFn)
+		}
+		if oFn != nil && oFn(EmptySkip, k) {
+			return true
+		}
 
 		for j := range records {
-			if skiped[j] {
-				continue
-			}
 			found := false
 			for i := range records2 {
 				if records[j].FileId().Uint64() == records2[i].FileId().Uint64() {
@@ -171,11 +191,14 @@ func (sf *SearchFinder2) And(i int, key uint64) SkipFn {
 					break
 				}
 			}
-			if !found {
-				skiped[j] = true
+			if !found && k == j {
+				return true
+			}
+			if j > k {
+				break
 			}
 		}
-		return skiped
+		return false
 	}
 }
 
@@ -196,7 +219,7 @@ func (sf *SearchFinder2) All(opts ...ResultOpt) interface{} {
 }
 func (sf *SearchFinder2) Records() (recs []*query.Record) {
 	for i := range sf.recordFns {
-		recs = append(recs, sf.recordFns[i](sf.skipdFns[i](map[int]bool{}))...)
+		recs = append(recs, sf.recordFns[i](sf.skipdFns[i])...)
 	}
 	return
 }
@@ -213,7 +236,7 @@ func (sf *SearchFinder2) First(opts ...ResultOpt) interface{} {
 		return nil
 	}
 
-	recs := sf.recordFns[0](sf.skipdFns[0](map[int]bool{}))
+	recs := sf.recordFns[0](sf.skipdFns[0])
 	return opts[0](sf.column(), []*query.Record{recs[0]})
 
 }
@@ -227,7 +250,7 @@ func (sf *SearchFinder2) Last(opts ...ResultOpt) interface{} {
 	}
 
 	idx := len(sf.recordFns) - 1
-	recs := sf.recordFns[idx](sf.skipdFns[idx](map[int]bool{}))
+	recs := sf.recordFns[idx](sf.skipdFns[idx])
 
 	return opts[0](sf.column(), []*query.Record{recs[len(recs)-1]})
 }
