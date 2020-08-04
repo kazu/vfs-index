@@ -35,7 +35,8 @@ func (node IdxEntry) Pathinfos() (result *PathInfoList) {
 	return
 }
 
-func (node IdxEntry) SetPathinfos(v *base.CommonNode) error {
+//func (node IdxEntry) SetPathinfos(v *base.CommonNode) error {
+func (node IdxEntry) SetPathinfos(v *PathInfoList) error {
 
-	return node.CommonNode.SetFieldAt(0, v)
+	return node.CommonNode.SetFieldAt(0, v.SelfAsCommonNode())
 }

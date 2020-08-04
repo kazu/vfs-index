@@ -460,7 +460,7 @@ func (c *Column) mergeIndex(w IdxWriter, ctx context.Context) error {
 			if keyRecord == nil || f.IdxInfo().first != keyRecord.Key().Uint64() {
 				if keyRecord != nil {
 					cnt := keyrecords.Count()
-					e := keyRecord.SetRecords(recs.CommonNode)
+					e := keyRecord.SetRecords(recs)
 					if e != nil {
 						Log(LOG_ERROR, "mergeIndex(): %s fail to set to records\n", f.Path)
 						return e
@@ -514,14 +514,14 @@ func (c *Column) mergeIndex(w IdxWriter, ctx context.Context) error {
 	}
 
 	if query.KeyRecordSingle(keyrecords.At(cnt-1)).Key().Uint64() != keyRecord.Key().Uint64() {
-		keyRecord.SetRecords(recs.CommonNode)
+		keyRecord.SetRecords(recs)
 		keyRecord.Flatten()
 		keyrecords.SetAt(cnt, keyRecord)
 	}
 	keyrecords.Flatten()
-	idxNum.SetIndexes(keyrecords.CommonNode)
+	idxNum.SetIndexes(keyrecords)
 
-	root.SetIndex(idxNum.CommonNode)
+	root.SetIndex(&query.Index{CommonNode: idxNum.CommonNode})
 	root.Flatten()
 
 	vname := func(key uint64) string {

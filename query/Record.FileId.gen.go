@@ -35,7 +35,8 @@ func (node Record) FileId() (result *CommonNode) {
 	return
 }
 
-func (node Record) SetFileId(v *base.CommonNode) error {
+//func (node Record) SetFileId(v *base.CommonNode) error {
+func (node Record) SetFileId(v *CommonNode) error {
 
-	return node.CommonNode.SetFieldAt(0, v)
+	return node.CommonNode.SetFieldAt(0, v.SelfAsCommonNode())
 }

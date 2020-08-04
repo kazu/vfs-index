@@ -35,7 +35,8 @@ func (node Symbols) Symbols() (result *SymbolList) {
 	return
 }
 
-func (node Symbols) SetSymbols(v *base.CommonNode) error {
+//func (node Symbols) SetSymbols(v *base.CommonNode) error {
+func (node Symbols) SetSymbols(v *SymbolList) error {
 
-	return node.CommonNode.SetFieldAt(0, v)
+	return node.CommonNode.SetFieldAt(0, v.SelfAsCommonNode())
 }

@@ -17,7 +17,7 @@ func NewFilesList() *FilesList {
 	list.NodeList = &base.NodeList{}
 	list.CommonNode.Name = "[]Files"
 
-	list.InitList()
+	(*base.List)(list.CommonNode).InitList()
 	return list
 }
 
@@ -27,12 +27,12 @@ func emptyFilesList() *FilesList {
 
 func (node FilesList) At(i int) (result *Files, e error) {
 	result = &Files{}
-	result.CommonNode, e = node.CommonNode.At(i)
+	result.CommonNode, e = (*base.List)(node.CommonNode).At(i)
 	return
 }
 
 func (node FilesList) SetAt(i int, v *Files) error {
-	return node.CommonNode.SetAt(i, v.CommonNode)
+	return (*base.List)(node.CommonNode).SetAt(i, v.CommonNode)
 }
 
 func (node FilesList) First() (result *Files, e error) {
@@ -45,7 +45,7 @@ func (node FilesList) Last() (result *Files, e error) {
 
 func (node FilesList) Select(fn func(*Files) bool) (result []*Files) {
 	result = make([]*Files, 0, int(node.NodeList.ValueInfo.VLen))
-	commons := node.CommonNode.Select(func(cm *CommonNode) bool {
+	commons := (*base.List)(node.CommonNode).Select(func(cm *CommonNode) bool {
 		return fn(&Files{CommonNode: cm})
 	})
 	for _, cm := range commons {
@@ -56,7 +56,7 @@ func (node FilesList) Select(fn func(*Files) bool) (result []*Files) {
 
 func (node FilesList) Find(fn func(*Files) bool) *Files {
 	result := &Files{}
-	result.CommonNode = node.CommonNode.Find(func(cm *CommonNode) bool {
+	result.CommonNode = (*base.List)(node.CommonNode).Find(func(cm *CommonNode) bool {
 		return fn(&Files{CommonNode: cm})
 	})
 	return result
@@ -68,4 +68,26 @@ func (node FilesList) All() []*Files {
 
 func (node FilesList) Count() int {
 	return int(node.NodeList.ValueInfo.VLen)
+}
+
+func (node FilesList) SwapAt(i, j int) error {
+	return (*List)(node.CommonNode).SwapAt(i, j)
+}
+
+func (node FilesList) SortBy(less func(i, j int) bool) error {
+	return (*List)(node.CommonNode).SortBy(less)
+}
+
+// Search ... binary search
+func (node FilesList) Search(fn func(*Files) bool) *Files {
+	result := &Files{}
+
+	i := (*base.List)(node.CommonNode).SearchIndex(int((*base.List)(node.CommonNode).VLen()), func(cm *CommonNode) bool {
+		return fn(&Files{CommonNode: cm})
+	})
+	if i < int((*base.List)(node.CommonNode).VLen()) {
+		result, _ = node.At(i)
+	}
+
+	return result
 }

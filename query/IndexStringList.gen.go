@@ -17,7 +17,7 @@ func NewIndexStringList() *IndexStringList {
 	list.NodeList = &base.NodeList{}
 	list.CommonNode.Name = "[]IndexString"
 
-	list.InitList()
+	(*base.List)(list.CommonNode).InitList()
 	return list
 }
 
@@ -27,12 +27,12 @@ func emptyIndexStringList() *IndexStringList {
 
 func (node IndexStringList) At(i int) (result *IndexString, e error) {
 	result = &IndexString{}
-	result.CommonNode, e = node.CommonNode.At(i)
+	result.CommonNode, e = (*base.List)(node.CommonNode).At(i)
 	return
 }
 
 func (node IndexStringList) SetAt(i int, v *IndexString) error {
-	return node.CommonNode.SetAt(i, v.CommonNode)
+	return (*base.List)(node.CommonNode).SetAt(i, v.CommonNode)
 }
 
 func (node IndexStringList) First() (result *IndexString, e error) {
@@ -45,7 +45,7 @@ func (node IndexStringList) Last() (result *IndexString, e error) {
 
 func (node IndexStringList) Select(fn func(*IndexString) bool) (result []*IndexString) {
 	result = make([]*IndexString, 0, int(node.NodeList.ValueInfo.VLen))
-	commons := node.CommonNode.Select(func(cm *CommonNode) bool {
+	commons := (*base.List)(node.CommonNode).Select(func(cm *CommonNode) bool {
 		return fn(&IndexString{CommonNode: cm})
 	})
 	for _, cm := range commons {
@@ -56,7 +56,7 @@ func (node IndexStringList) Select(fn func(*IndexString) bool) (result []*IndexS
 
 func (node IndexStringList) Find(fn func(*IndexString) bool) *IndexString {
 	result := &IndexString{}
-	result.CommonNode = node.CommonNode.Find(func(cm *CommonNode) bool {
+	result.CommonNode = (*base.List)(node.CommonNode).Find(func(cm *CommonNode) bool {
 		return fn(&IndexString{CommonNode: cm})
 	})
 	return result
@@ -68,4 +68,26 @@ func (node IndexStringList) All() []*IndexString {
 
 func (node IndexStringList) Count() int {
 	return int(node.NodeList.ValueInfo.VLen)
+}
+
+func (node IndexStringList) SwapAt(i, j int) error {
+	return (*List)(node.CommonNode).SwapAt(i, j)
+}
+
+func (node IndexStringList) SortBy(less func(i, j int) bool) error {
+	return (*List)(node.CommonNode).SortBy(less)
+}
+
+// Search ... binary search
+func (node IndexStringList) Search(fn func(*IndexString) bool) *IndexString {
+	result := &IndexString{}
+
+	i := (*base.List)(node.CommonNode).SearchIndex(int((*base.List)(node.CommonNode).VLen()), func(cm *CommonNode) bool {
+		return fn(&IndexString{CommonNode: cm})
+	})
+	if i < int((*base.List)(node.CommonNode).VLen()) {
+		result, _ = node.At(i)
+	}
+
+	return result
 }

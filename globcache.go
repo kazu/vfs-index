@@ -100,8 +100,8 @@ func (g GlobCache) Run(key string) {
 	prepare := func(flist *query.PathInfoList, idxEntry *query.IdxEntry, root *query.Root) {
 		flist.Merge()
 		idxEntry = query.NewIdxEntry()
-		idxEntry.SetPathinfos(flist.CommonNode)
-		root.SetIndex(idxEntry.CommonNode)
+		idxEntry.SetPathinfos(flist)
+		root.SetIndex(&query.Index{CommonNode: idxEntry.CommonNode})
 		root.Merge()
 	}
 
@@ -165,7 +165,7 @@ func (g GlobCache) Run(key string) {
 
 		pathinfo := query.NewPathInfo()
 		pathinfo.BaseToNoLayer()
-		pathinfo.SetPath(base.FromBytes([]byte(req.val)))
+		pathinfo.SetPath(base.FromByteList([]byte(req.val)))
 		pathinfo.Merge()
 		pathinfos.SetAt(pathinfos.Count(), pathinfo.CommonNode)
 		if cnt%8 == 7 {

@@ -18,11 +18,11 @@ var (
 // (field inedx, field type) -> PathInfo_IdxToType
 var DUMMY_PathInfo_Path bool = SetPathInfoFields("PathInfo", "Path", "[]byte", PathInfo_Path_0)
 
-func (node PathInfo) Path() (result *CommonNode) {
-	result = emptyCommonNode()
+func (node PathInfo) Path() (result *List) {
+	result = emptyList()
 	common := node.FieldAt(PathInfo_Path_0)
 	if common.Node == nil {
-		result = NewCommonNode()
+		result = NewList()
 		node.SetFieldAt(PathInfo_Path_0, result.SelfAsCommonNode())
 		common = node.FieldAt(PathInfo_Path_0)
 	}
@@ -35,7 +35,8 @@ func (node PathInfo) Path() (result *CommonNode) {
 	return
 }
 
-func (node PathInfo) SetPath(v *base.CommonNode) error {
+//func (node PathInfo) SetPath(v *base.CommonNode) error {
+func (node PathInfo) SetPath(v *List) error {
 
-	return node.CommonNode.SetFieldAt(0, v)
+	return node.CommonNode.SetFieldAt(0, v.SelfAsCommonNode())
 }

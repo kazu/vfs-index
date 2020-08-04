@@ -35,7 +35,8 @@ func (node IndexString) Maps() (result *InvertedMapStringList) {
 	return
 }
 
-func (node IndexString) SetMaps(v *base.CommonNode) error {
+//func (node IndexString) SetMaps(v *base.CommonNode) error {
+func (node IndexString) SetMaps(v *InvertedMapStringList) error {
 
-	return node.CommonNode.SetFieldAt(1, v)
+	return node.CommonNode.SetFieldAt(1, v.SelfAsCommonNode())
 }

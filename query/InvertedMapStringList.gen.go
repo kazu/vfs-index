@@ -17,7 +17,7 @@ func NewInvertedMapStringList() *InvertedMapStringList {
 	list.NodeList = &base.NodeList{}
 	list.CommonNode.Name = "[]InvertedMapString"
 
-	list.InitList()
+	(*base.List)(list.CommonNode).InitList()
 	return list
 }
 
@@ -27,12 +27,12 @@ func emptyInvertedMapStringList() *InvertedMapStringList {
 
 func (node InvertedMapStringList) At(i int) (result *InvertedMapString, e error) {
 	result = &InvertedMapString{}
-	result.CommonNode, e = node.CommonNode.At(i)
+	result.CommonNode, e = (*base.List)(node.CommonNode).At(i)
 	return
 }
 
 func (node InvertedMapStringList) SetAt(i int, v *InvertedMapString) error {
-	return node.CommonNode.SetAt(i, v.CommonNode)
+	return (*base.List)(node.CommonNode).SetAt(i, v.CommonNode)
 }
 
 func (node InvertedMapStringList) First() (result *InvertedMapString, e error) {
@@ -45,7 +45,7 @@ func (node InvertedMapStringList) Last() (result *InvertedMapString, e error) {
 
 func (node InvertedMapStringList) Select(fn func(*InvertedMapString) bool) (result []*InvertedMapString) {
 	result = make([]*InvertedMapString, 0, int(node.NodeList.ValueInfo.VLen))
-	commons := node.CommonNode.Select(func(cm *CommonNode) bool {
+	commons := (*base.List)(node.CommonNode).Select(func(cm *CommonNode) bool {
 		return fn(&InvertedMapString{CommonNode: cm})
 	})
 	for _, cm := range commons {
@@ -56,7 +56,7 @@ func (node InvertedMapStringList) Select(fn func(*InvertedMapString) bool) (resu
 
 func (node InvertedMapStringList) Find(fn func(*InvertedMapString) bool) *InvertedMapString {
 	result := &InvertedMapString{}
-	result.CommonNode = node.CommonNode.Find(func(cm *CommonNode) bool {
+	result.CommonNode = (*base.List)(node.CommonNode).Find(func(cm *CommonNode) bool {
 		return fn(&InvertedMapString{CommonNode: cm})
 	})
 	return result
@@ -68,4 +68,26 @@ func (node InvertedMapStringList) All() []*InvertedMapString {
 
 func (node InvertedMapStringList) Count() int {
 	return int(node.NodeList.ValueInfo.VLen)
+}
+
+func (node InvertedMapStringList) SwapAt(i, j int) error {
+	return (*List)(node.CommonNode).SwapAt(i, j)
+}
+
+func (node InvertedMapStringList) SortBy(less func(i, j int) bool) error {
+	return (*List)(node.CommonNode).SortBy(less)
+}
+
+// Search ... binary search
+func (node InvertedMapStringList) Search(fn func(*InvertedMapString) bool) *InvertedMapString {
+	result := &InvertedMapString{}
+
+	i := (*base.List)(node.CommonNode).SearchIndex(int((*base.List)(node.CommonNode).VLen()), func(cm *CommonNode) bool {
+		return fn(&InvertedMapString{CommonNode: cm})
+	})
+	if i < int((*base.List)(node.CommonNode).VLen()) {
+		result, _ = node.At(i)
+	}
+
+	return result
 }

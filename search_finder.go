@@ -36,7 +36,7 @@ func (s *SearchFinder) KeyRecord() *query.KeyRecord {
 			r := s.idxs[i].KeyRecord().Value()
 			rlist.SetAt(i, r)
 		}
-		kr.SetRecords(rlist.CommonNode)
+		kr.SetRecords(rlist)
 
 		kr.Flatten()
 		return kr

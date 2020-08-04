@@ -35,7 +35,8 @@ func (node Files) Files() (result *FileList) {
 	return
 }
 
-func (node Files) SetFiles(v *base.CommonNode) error {
+//func (node Files) SetFiles(v *base.CommonNode) error {
+func (node Files) SetFiles(v *FileList) error {
 
-	return node.CommonNode.SetFieldAt(0, v)
+	return node.CommonNode.SetFieldAt(0, v.SelfAsCommonNode())
 }

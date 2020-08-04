@@ -17,7 +17,7 @@ func NewKeyRecordList() *KeyRecordList {
 	list.NodeList = &base.NodeList{}
 	list.CommonNode.Name = "[]KeyRecord"
 
-	list.InitList()
+	(*base.List)(list.CommonNode).InitList()
 	return list
 }
 
@@ -27,12 +27,12 @@ func emptyKeyRecordList() *KeyRecordList {
 
 func (node KeyRecordList) At(i int) (result *KeyRecord, e error) {
 	result = &KeyRecord{}
-	result.CommonNode, e = node.CommonNode.At(i)
+	result.CommonNode, e = (*base.List)(node.CommonNode).At(i)
 	return
 }
 
 func (node KeyRecordList) SetAt(i int, v *KeyRecord) error {
-	return node.CommonNode.SetAt(i, v.CommonNode)
+	return (*base.List)(node.CommonNode).SetAt(i, v.CommonNode)
 }
 
 func (node KeyRecordList) First() (result *KeyRecord, e error) {
@@ -45,7 +45,7 @@ func (node KeyRecordList) Last() (result *KeyRecord, e error) {
 
 func (node KeyRecordList) Select(fn func(*KeyRecord) bool) (result []*KeyRecord) {
 	result = make([]*KeyRecord, 0, int(node.NodeList.ValueInfo.VLen))
-	commons := node.CommonNode.Select(func(cm *CommonNode) bool {
+	commons := (*base.List)(node.CommonNode).Select(func(cm *CommonNode) bool {
 		return fn(&KeyRecord{CommonNode: cm})
 	})
 	for _, cm := range commons {
@@ -56,7 +56,7 @@ func (node KeyRecordList) Select(fn func(*KeyRecord) bool) (result []*KeyRecord)
 
 func (node KeyRecordList) Find(fn func(*KeyRecord) bool) *KeyRecord {
 	result := &KeyRecord{}
-	result.CommonNode = node.CommonNode.Find(func(cm *CommonNode) bool {
+	result.CommonNode = (*base.List)(node.CommonNode).Find(func(cm *CommonNode) bool {
 		return fn(&KeyRecord{CommonNode: cm})
 	})
 	return result
@@ -68,4 +68,26 @@ func (node KeyRecordList) All() []*KeyRecord {
 
 func (node KeyRecordList) Count() int {
 	return int(node.NodeList.ValueInfo.VLen)
+}
+
+func (node KeyRecordList) SwapAt(i, j int) error {
+	return (*List)(node.CommonNode).SwapAt(i, j)
+}
+
+func (node KeyRecordList) SortBy(less func(i, j int) bool) error {
+	return (*List)(node.CommonNode).SortBy(less)
+}
+
+// Search ... binary search
+func (node KeyRecordList) Search(fn func(*KeyRecord) bool) *KeyRecord {
+	result := &KeyRecord{}
+
+	i := (*base.List)(node.CommonNode).SearchIndex(int((*base.List)(node.CommonNode).VLen()), func(cm *CommonNode) bool {
+		return fn(&KeyRecord{CommonNode: cm})
+	})
+	if i < int((*base.List)(node.CommonNode).VLen()) {
+		result, _ = node.At(i)
+	}
+
+	return result
 }

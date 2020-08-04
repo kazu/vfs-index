@@ -35,7 +35,8 @@ func (node InvertedMapNum) Key() (result *CommonNode) {
 	return
 }
 
-func (node InvertedMapNum) SetKey(v *base.CommonNode) error {
+//func (node InvertedMapNum) SetKey(v *base.CommonNode) error {
+func (node InvertedMapNum) SetKey(v *CommonNode) error {
 
-	return node.CommonNode.SetFieldAt(0, v)
+	return node.CommonNode.SetFieldAt(0, v.SelfAsCommonNode())
 }

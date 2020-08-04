@@ -35,7 +35,8 @@ func (node IndexNum) Indexes() (result *KeyRecordList) {
 	return
 }
 
-func (node IndexNum) SetIndexes(v *base.CommonNode) error {
+//func (node IndexNum) SetIndexes(v *base.CommonNode) error {
+func (node IndexNum) SetIndexes(v *KeyRecordList) error {
 
-	return node.CommonNode.SetFieldAt(0, v)
+	return node.CommonNode.SetFieldAt(0, v.SelfAsCommonNode())
 }

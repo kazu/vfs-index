@@ -35,7 +35,8 @@ func (node Symbol) Key() (result *CommonNodeList) {
 	return
 }
 
-func (node Symbol) SetKey(v *base.CommonNode) error {
+//func (node Symbol) SetKey(v *base.CommonNode) error {
+func (node Symbol) SetKey(v *CommonNodeList) error {
 
-	return node.CommonNode.SetFieldAt(0, v)
+	return node.CommonNode.SetFieldAt(0, v.SelfAsCommonNode())
 }

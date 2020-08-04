@@ -35,7 +35,8 @@ func (node Record) OffsetOfValue() (result *CommonNode) {
 	return
 }
 
-func (node Record) SetOffsetOfValue(v *base.CommonNode) error {
+//func (node Record) SetOffsetOfValue(v *base.CommonNode) error {
+func (node Record) SetOffsetOfValue(v *CommonNode) error {
 
-	return node.CommonNode.SetFieldAt(3, v)
+	return node.CommonNode.SetFieldAt(3, v.SelfAsCommonNode())
 }

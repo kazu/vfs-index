@@ -18,11 +18,11 @@ var (
 // (field inedx, field type) -> File_IdxToType
 var DUMMY_File_Name bool = SetFileFields("File", "Name", "[]byte", File_Name_1)
 
-func (node File) Name() (result *CommonNode) {
-	result = emptyCommonNode()
+func (node File) Name() (result *List) {
+	result = emptyList()
 	common := node.FieldAt(File_Name_1)
 	if common.Node == nil {
-		result = NewCommonNode()
+		result = NewList()
 		node.SetFieldAt(File_Name_1, result.SelfAsCommonNode())
 		common = node.FieldAt(File_Name_1)
 	}
@@ -35,7 +35,8 @@ func (node File) Name() (result *CommonNode) {
 	return
 }
 
-func (node File) SetName(v *base.CommonNode) error {
+//func (node File) SetName(v *base.CommonNode) error {
+func (node File) SetName(v *List) error {
 
-	return node.CommonNode.SetFieldAt(1, v)
+	return node.CommonNode.SetFieldAt(1, v.SelfAsCommonNode())
 }

@@ -35,7 +35,8 @@ func (node InvertedMapString) Value() (result *Record) {
 	return
 }
 
-func (node InvertedMapString) SetValue(v *base.CommonNode) error {
+//func (node InvertedMapString) SetValue(v *base.CommonNode) error {
+func (node InvertedMapString) SetValue(v *Record) error {
 
-	return node.CommonNode.SetFieldAt(1, v)
+	return node.CommonNode.SetFieldAt(1, v.SelfAsCommonNode())
 }

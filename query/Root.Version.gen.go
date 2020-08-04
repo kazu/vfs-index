@@ -35,7 +35,8 @@ func (node Root) Version() (result *CommonNode) {
 	return
 }
 
-func (node Root) SetVersion(v *base.CommonNode) error {
+//func (node Root) SetVersion(v *base.CommonNode) error {
+func (node Root) SetVersion(v *CommonNode) error {
 
-	return node.CommonNode.SetFieldAt(0, v)
+	return node.CommonNode.SetFieldAt(0, v.SelfAsCommonNode())
 }

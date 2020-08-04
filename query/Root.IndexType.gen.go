@@ -35,7 +35,8 @@ func (node Root) IndexType() (result *CommonNode) {
 	return
 }
 
-func (node Root) SetIndexType(v *base.CommonNode) error {
+//func (node Root) SetIndexType(v *base.CommonNode) error {
+func (node Root) SetIndexType(v *CommonNode) error {
 
-	return node.CommonNode.SetFieldAt(1, v)
+	return node.CommonNode.SetFieldAt(1, v.SelfAsCommonNode())
 }

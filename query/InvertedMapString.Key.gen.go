@@ -18,11 +18,11 @@ var (
 // (field inedx, field type) -> InvertedMapString_IdxToType
 var DUMMY_InvertedMapString_Key bool = SetInvertedMapStringFields("InvertedMapString", "Key", "[]byte", InvertedMapString_Key_0)
 
-func (node InvertedMapString) Key() (result *CommonNode) {
-	result = emptyCommonNode()
+func (node InvertedMapString) Key() (result *List) {
+	result = emptyList()
 	common := node.FieldAt(InvertedMapString_Key_0)
 	if common.Node == nil {
-		result = NewCommonNode()
+		result = NewList()
 		node.SetFieldAt(InvertedMapString_Key_0, result.SelfAsCommonNode())
 		common = node.FieldAt(InvertedMapString_Key_0)
 	}
@@ -35,7 +35,8 @@ func (node InvertedMapString) Key() (result *CommonNode) {
 	return
 }
 
-func (node InvertedMapString) SetKey(v *base.CommonNode) error {
+//func (node InvertedMapString) SetKey(v *base.CommonNode) error {
+func (node InvertedMapString) SetKey(v *List) error {
 
-	return node.CommonNode.SetFieldAt(0, v)
+	return node.CommonNode.SetFieldAt(0, v.SelfAsCommonNode())
 }

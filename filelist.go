@@ -203,7 +203,7 @@ func (f *File) ToFbs(l *FileList) []byte {
 
 	file := query.NewFile()
 	file.SetId(query.FromUint64(f.id))
-	file.SetName(base.FromBytes([]byte(f.name)))
+	file.SetName(base.FromByteList([]byte(f.name)))
 	if f.index_at == 0 {
 		file.SetIndexAt(query.FromInt64(time.Now().UnixNano()))
 	} else {
@@ -211,7 +211,7 @@ func (f *File) ToFbs(l *FileList) []byte {
 	}
 
 	root.SetIndexType(query.FromByte(byte(vfs_schema.IndexFile)))
-	e = root.SetIndex(file.CommonNode)
+	e = root.SetIndex(&query.Index{CommonNode: file.CommonNode})
 	if e != nil {
 		return nil
 	}

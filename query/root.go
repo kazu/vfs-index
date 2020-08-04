@@ -26,6 +26,7 @@ type Float32 = base.Float32
 type Float64 = base.Float64
 
 type CommonNode = base.CommonNode
+type List = base.List
 
 type CommonNodeList = base.CommonNode
 
@@ -45,17 +46,24 @@ func NewCommonNodeList() *CommonNodeList {
 	return emptyCommonNodeList()
 }
 
-func Open(r io.Reader, cap int) Root {
-	result := Root{CommonNode: base.Open(r, cap)}
+func emptyList() *base.List {
+	return (*base.List)(&base.CommonNode{})
+}
+
+func NewList() *List {
+	return emptyList()
+}
+
+func Open(r io.Reader, cap int, opts ...base.Option) Root {
+	result := Root{CommonNode: base.Open(r, cap, opts...)}
 	result.CommonNode.Name = "Root"
 	base.SetRootName(result.CommonNode.Name)
 	result.FetchIndex()
 	return result
-	//return Root{CommonNode: base.Open(r, cap)}
 }
 
-func OpenByBuf(buf []byte) Root {
-	result := Root{CommonNode: base.OpenByBuf(buf)}
+func OpenByBuf(buf []byte, opts ...base.Option) Root {
+	result := Root{CommonNode: base.OpenByBuf(buf, opts...)}
 	result.CommonNode.Name = "Root"
 	base.SetRootName(result.CommonNode.Name)
 	result.FetchIndex()

@@ -292,7 +292,7 @@ func storeGlobCache(pat string) error {
 	}
 
 	opathinfo := query.NewPathInfo()
-	opathinfo.SetPath(base.FromBytes([]byte(GGlobCache[pat][0])))
+	opathinfo.SetPath(base.FromByteList([]byte(GGlobCache[pat][0])))
 	opathinfos.SetAt(0, opathinfo)
 
 	pathinfos := base.CommonList{}
@@ -305,13 +305,16 @@ func storeGlobCache(pat string) error {
 			continue
 		}
 		pathinfo := query.NewPathInfo()
-		pathinfo.SetPath(base.FromBytes([]byte(path)))
+		pathinfo.SetPath(base.FromByteList([]byte(path)))
 		pathinfos.SetAt(i, pathinfo.CommonNode)
 	}
 	idxEntry := query.NewIdxEntry()
-	idxEntry.SetPathinfos(pathinfos.CommonNode)
+	pinfos := query.NewPathInfoList()
+	pinfos.CommonNode = pathinfos.CommonNode
+	//idxEntry.SetPathinfos(pathinfos)
+	idxEntry.SetPathinfos(pinfos)
 	root.SetIndexType(query.FromByte(byte(vfs_schema.IndexIdxEntry)))
-	root.SetIndex(idxEntry.CommonNode)
+	root.SetIndex(&query.Index{CommonNode: idxEntry.CommonNode})
 	root.Merge()
 
 	f, e := os.Create(wPath)

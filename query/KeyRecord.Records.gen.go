@@ -35,7 +35,8 @@ func (node KeyRecord) Records() (result *RecordList) {
 	return
 }
 
-func (node KeyRecord) SetRecords(v *base.CommonNode) error {
+//func (node KeyRecord) SetRecords(v *base.CommonNode) error {
+func (node KeyRecord) SetRecords(v *RecordList) error {
 
-	return node.CommonNode.SetFieldAt(1, v)
+	return node.CommonNode.SetFieldAt(1, v.SelfAsCommonNode())
 }

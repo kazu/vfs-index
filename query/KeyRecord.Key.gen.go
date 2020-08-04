@@ -35,7 +35,8 @@ func (node KeyRecord) Key() (result *CommonNode) {
 	return
 }
 
-func (node KeyRecord) SetKey(v *base.CommonNode) error {
+//func (node KeyRecord) SetKey(v *base.CommonNode) error {
+func (node KeyRecord) SetKey(v *CommonNode) error {
 
-	return node.CommonNode.SetFieldAt(0, v)
+	return node.CommonNode.SetFieldAt(0, v.SelfAsCommonNode())
 }

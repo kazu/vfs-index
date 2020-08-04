@@ -263,10 +263,10 @@ func (r *Record) ToFbs(inf interface{}) []byte {
 	rec.SetOffsetOfValue(query.FromInt32(0))
 	rec.SetValueSize(query.FromInt32(0))
 
-	inv.SetValue(rec.CommonNode)
+	inv.SetValue(rec)
 
 	root.SetIndexType(query.FromByte(byte(vfs_schema.IndexInvertedMapNum)))
-	root.SetIndex(inv.CommonNode)
+	root.SetIndex(&query.Index{CommonNode: inv.CommonNode})
 
 	// FIXME return io writer ?
 	root.Flatten()

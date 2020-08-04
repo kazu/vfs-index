@@ -17,7 +17,7 @@ func NewPathInfoList() *PathInfoList {
 	list.NodeList = &base.NodeList{}
 	list.CommonNode.Name = "[]PathInfo"
 
-	list.InitList()
+	(*base.List)(list.CommonNode).InitList()
 	return list
 }
 
@@ -27,12 +27,12 @@ func emptyPathInfoList() *PathInfoList {
 
 func (node PathInfoList) At(i int) (result *PathInfo, e error) {
 	result = &PathInfo{}
-	result.CommonNode, e = node.CommonNode.At(i)
+	result.CommonNode, e = (*base.List)(node.CommonNode).At(i)
 	return
 }
 
 func (node PathInfoList) SetAt(i int, v *PathInfo) error {
-	return node.CommonNode.SetAt(i, v.CommonNode)
+	return (*base.List)(node.CommonNode).SetAt(i, v.CommonNode)
 }
 
 func (node PathInfoList) First() (result *PathInfo, e error) {
@@ -45,7 +45,7 @@ func (node PathInfoList) Last() (result *PathInfo, e error) {
 
 func (node PathInfoList) Select(fn func(*PathInfo) bool) (result []*PathInfo) {
 	result = make([]*PathInfo, 0, int(node.NodeList.ValueInfo.VLen))
-	commons := node.CommonNode.Select(func(cm *CommonNode) bool {
+	commons := (*base.List)(node.CommonNode).Select(func(cm *CommonNode) bool {
 		return fn(&PathInfo{CommonNode: cm})
 	})
 	for _, cm := range commons {
@@ -56,7 +56,7 @@ func (node PathInfoList) Select(fn func(*PathInfo) bool) (result []*PathInfo) {
 
 func (node PathInfoList) Find(fn func(*PathInfo) bool) *PathInfo {
 	result := &PathInfo{}
-	result.CommonNode = node.CommonNode.Find(func(cm *CommonNode) bool {
+	result.CommonNode = (*base.List)(node.CommonNode).Find(func(cm *CommonNode) bool {
 		return fn(&PathInfo{CommonNode: cm})
 	})
 	return result
@@ -68,4 +68,26 @@ func (node PathInfoList) All() []*PathInfo {
 
 func (node PathInfoList) Count() int {
 	return int(node.NodeList.ValueInfo.VLen)
+}
+
+func (node PathInfoList) SwapAt(i, j int) error {
+	return (*List)(node.CommonNode).SwapAt(i, j)
+}
+
+func (node PathInfoList) SortBy(less func(i, j int) bool) error {
+	return (*List)(node.CommonNode).SortBy(less)
+}
+
+// Search ... binary search
+func (node PathInfoList) Search(fn func(*PathInfo) bool) *PathInfo {
+	result := &PathInfo{}
+
+	i := (*base.List)(node.CommonNode).SearchIndex(int((*base.List)(node.CommonNode).VLen()), func(cm *CommonNode) bool {
+		return fn(&PathInfo{CommonNode: cm})
+	})
+	if i < int((*base.List)(node.CommonNode).VLen()) {
+		result, _ = node.At(i)
+	}
+
+	return result
 }
