@@ -34,11 +34,7 @@ func setup() {
 		//os.RemoveAll(IdxDir)
 		return
 	}
-	idx, _ :=
-		vfs.Open(DataDir,
-			vfs.RootDir(IdxDir), vfs.MergeDuration(10*time.Second))
-	idx.Regist("test", "id")
-	idx.Regist("test", "title")
+	vfs.Untar("testdata/idx.tar.gz", "testdata")
 }
 
 func teardown() {
@@ -51,7 +47,7 @@ func TestMain(m *testing.M) {
 	setup()
 	ret := m.Run()
 	if ret == 0 {
-		//teardown()
+		teardown()
 	}
 	os.Exit(ret)
 }

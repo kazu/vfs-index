@@ -21,12 +21,7 @@ func setup() {
 		//os.RemoveAll(IdxDir)
 		return
 	}
-	idx, _ :=
-		Open(DataDir,
-			RootDir(IdxDir), MergeDuration(2*time.Second))
-	idx.Regist("test", "id")
-	idx.Regist("test", "title")
-	idx.Regist("test", "content")
+	Untar("testdata/idx-inter.tar.gz", "testdata")
 }
 
 func teardown() {
