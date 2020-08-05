@@ -561,6 +561,7 @@ func (c *Column) mergeIndex(w IdxWriter, ctx context.Context) error {
 		os.Remove(f.Path)
 	}
 	Log(LOG_DEBUG, "S: remove merged files count=%d \n", len(noMergeIdxFiles))
+	c.cleanDirs()
 
 	return nil
 }
@@ -592,6 +593,42 @@ func (c *Column) Key2Path(key uint64, state byte) string {
 	}
 	return ColumnPathWithStatus(c.TableDir(), c.Name, c.IsNum, strkey, strkey, state)
 
+}
+
+func (c *Column) cleanDirs() (cnt int) {
+	dirs := c.emptyDirs()
+	cnt = len(dirs)
+	for _, dir := range dirs {
+		os.RemoveAll(dir)
+	}
+	if cnt > 0 {
+		c.cleanDirs()
+	}
+	return
+
+}
+func (c *Column) emptyDirs() []string {
+
+	rDirs := []string{}
+	finder := OpenIndexFile(c)
+	finder.Select(
+		OptAsc(true),
+		OptCcondFn(func(f *IndexFile) CondType {
+			if f.IsType(IdxFileType_Dir) {
+				if names, _ := readDirNames(f.Path); len(names) == 0 {
+					return CondTrue
+				}
+				return CondLazy
+			}
+			return CondFalse
+		}),
+		OptTraverse(func(f *IndexFile) error {
+			rDirs = append(rDirs, f.Path)
+			return nil
+		}),
+	)
+
+	return rDirs
 }
 
 type RecordPos struct {

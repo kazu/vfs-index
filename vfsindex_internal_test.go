@@ -159,12 +159,14 @@ func Test_SearchCond_SelectGram(t *testing.T) {
 
 	sCond := idx.On("test", ReaderColumn("title"), MergeOnSearch(false))
 
-	str := sCond.Select2(func(cond SearchCondElem2) bool {
+	ostr := sCond.Select2(func(cond SearchCondElem2) bool {
 		return cond.Op("title", "==", "拉致問")
-	}).First(ResultOutput("json")).(string)
+	}).First(ResultOutput("json"))
+	str, ok := ostr.(string)
+	_ = ok
 
 	assert.NoError(t, e)
-	assert.True(t, len(str) > 0)
+	assert.True(t, len(str) > 4)
 
 }
 
@@ -541,4 +543,21 @@ func Test_Parse_CSV(t *testing.T) {
 	e = dec.Decoder(raw, &data)
 	assert.NoError(t, e)
 	assert.Equal(t, "ぺこぱ", data["title"].(string))
+}
+
+func Test_IndexFile_cleanDirs(t *testing.T) {
+	setup()
+
+	CurrentLogLoevel = LOG_WARN
+	idx, _ := Open(DataDir,
+		RootDir(IdxDir))
+
+	sCond := idx.On("test", ReaderColumn("title"), MergeOnSearch(false))
+
+	c := sCond.Column()
+
+	c.cleanDirs()
+	dirs := c.emptyDirs()
+
+	assert.True(t, len(dirs) == 0)
 }

@@ -51,7 +51,7 @@ func TestMain(m *testing.M) {
 	setup()
 	ret := m.Run()
 	if ret == 0 {
-		teardown()
+		//teardown()
 	}
 	os.Exit(ret)
 }
