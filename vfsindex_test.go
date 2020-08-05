@@ -18,6 +18,8 @@ const IdxDir string = "testdata/vfs"
 const DataDir string = "testdata/data"
 const TestRoot string = "testdata"
 
+const IdxInterDir string = "testdata/vfs-inter"
+
 func DefaultOption() vfs.Option {
 	return vfs.RootDir(IdxDir)
 }
@@ -40,6 +42,9 @@ func setup() {
 func teardown() {
 	if vfs.FileExist(IdxDir) {
 		os.RemoveAll(IdxDir)
+	}
+	if vfs.FileExist(IdxInterDir) {
+		os.RemoveAll(IdxInterDir)
 	}
 }
 

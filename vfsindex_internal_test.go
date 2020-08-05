@@ -14,6 +14,20 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// func TestMain(m *testing.M) {
+// 	setup()
+// 	ret := m.Run()
+// 	if ret == 0 {
+// 		//teardown()
+// 	}
+// 	os.Exit(ret)
+// }
+
+const IdxDir string = "testdata/vfs-inter"
+const DataDir string = "testdata/data"
+const TestRoot string = "testdata"
+const IdxNoInterDir string = "testdata/vfs"
+
 func setup() {
 
 	CurrentLogLoevel = LOG_WARN
@@ -28,20 +42,10 @@ func teardown() {
 	if FileExist(IdxDir) {
 		os.RemoveAll(IdxDir)
 	}
+	if FileExist(IdxNoInterDir) {
+		os.RemoveAll(IdxNoInterDir)
+	}
 }
-
-// func TestMain(m *testing.M) {
-// 	setup()
-// 	ret := m.Run()
-// 	if ret == 0 {
-// 		//teardown()
-// 	}
-// 	os.Exit(ret)
-// }
-
-const IdxDir string = "testdata/vfs-inter"
-const DataDir string = "testdata/data"
-const TestRoot string = "testdata"
 
 func Test_IndexFile(t *testing.T) {
 	setup()
@@ -225,7 +229,7 @@ func Test_SearchCondQueryLess_FirstGram(t *testing.T) {
 func Test_IndexFile_Select(t *testing.T) {
 	setup()
 
-	CurrentLogLoevel = LOG_DEBUG
+	CurrentLogLoevel = LOG_WARN
 	s := time.Now()
 	idx, e := Open(DataDir,
 		RootDir(IdxDir))
@@ -341,7 +345,7 @@ func Test_Recrod_ToFbs(t *testing.T) {
 func Test_IndexFile_parentWith(t *testing.T) {
 	setup()
 
-	CurrentLogLoevel = LOG_DEBUG
+	CurrentLogLoevel = LOG_WARN
 	idx, _ := Open(DataDir,
 		RootDir(IdxDir))
 
