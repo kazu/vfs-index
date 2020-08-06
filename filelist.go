@@ -16,6 +16,7 @@ import (
 	"github.com/kazu/fbshelper/query/base"
 
 	"github.com/kazu/loncha"
+	"github.com/kazu/vfs-index/decompress"
 	"github.com/kazu/vfs-index/query"
 	"github.com/kazu/vfs-index/vfs_schema"
 )
@@ -267,7 +268,8 @@ func (f *File) Write(l *FileList) error {
 func (f *File) Records(ctx context.Context, dir string) <-chan *Record {
 	ch := make(chan *Record, 5)
 
-	rio, e := os.Open(filepath.Join(dir, f.name))
+	path := filepath.Join(dir, f.name)
+	rio, e := decompress.Open(decompress.LocalFile(path))
 	if e != nil {
 		close(ch)
 		rio.Close()
@@ -280,9 +282,21 @@ func (f *File) Records(ctx context.Context, dir string) <-chan *Record {
 
 	if err != nil {
 		Log(LOG_ERROR, "File.Records(): cannot find %s decoder\n", ext)
+		rio.Close()
 		defer close(ch)
 		return ch
 	}
+
+	go func(ctx context.Context, f io.Closer) {
+		defer f.Close()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+		}
+	}(ctx, rio)
 
 	return dec.Tokenizer(ctx, rio, f)
 

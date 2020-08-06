@@ -111,4 +111,4 @@ sCond.CancelAndWait()
 - [x] コメント、ライセンス追加
 - [x] csv のsupport
 - [ ] msgpack のsupport
-- [ ] support lz4(?)
+- [x] support lz4

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kazu/vfs-index/decompress"
 	"github.com/kazu/vfs-index/query"
 	"github.com/kazu/vfs-index/vfs_schema"
 )
@@ -154,16 +155,9 @@ func (r *Record) Raw(c *Column) (data []byte) {
 		return nil
 	}
 
-	f, err := os.Open(path)
-	if err != nil {
-		Log(LOG_WARN, "%s should remove from Column.Dirties \n", path)
-		// FIXME: remove from Column.Dirties
-		return nil
-	}
-
-	data = make([]byte, r.size)
-	if n, e := f.ReadAt(data, r.offset); e != nil || int64(n) != r.size {
-		Log(LOG_WARN, "%s is nvalid data: should remove from Column.Dirties \n", path)
+	f, e := decompress.Open(decompress.LocalFile(path))
+	if e != nil {
+		Log(LOG_ERROR, "Flist.FPath fail e=%s r=%+v\n", err.Error(), r)
 		return nil
 	}
 
@@ -178,6 +172,14 @@ func (r *Record) Raw(c *Column) (data []byte) {
 			cancel()
 		}
 		dummy = nil
+		f.Close()
+		f, _ = decompress.Open(decompress.LocalFile(path))
+	}
+
+	data = make([]byte, r.size)
+	if n, e := f.ReadAt(data, r.offset); e != nil || int64(n) != r.size {
+		Log(LOG_WARN, "%s is nvalid data: should remove from Column.Dirties \n", path)
+		return nil
 	}
 
 	return data

@@ -142,4 +142,4 @@ sCond.CancelAndWait()
 - [x] add comment
 - [x] csv support 
 - [ ] msgpack support
-- [ ] support compression data (  lz4(?) )
+- [x] support compression data (  lz4(?) )

@@ -14,6 +14,7 @@ require (
 	github.com/kazu/fbshelper v0.1.4
 	github.com/kazu/loncha v0.1.1
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646 // indirect
+	github.com/pierrec/lz4 v2.5.2+incompatible
 	github.com/stretchr/testify v1.4.0
 	github.com/ugorji/go/codec v1.1.7
 	github.com/vbauerster/mpb/v5 v5.2.4

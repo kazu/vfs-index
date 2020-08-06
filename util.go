@@ -20,6 +20,7 @@ import (
 
 	"github.com/kazu/fbshelper/query/base"
 	"github.com/kazu/loncha"
+	"github.com/kazu/vfs-index/decompress"
 	"github.com/kazu/vfs-index/query"
 	"github.com/kazu/vfs-index/vfs_schema"
 	"github.com/vbauerster/mpb/v5"
@@ -207,8 +208,8 @@ func GetDecoder(fname string) (dec Decoder, e error) {
 	if len(fname) < 1 {
 		return dec, ErrInvalidTableName
 	}
-
-	ext := filepath.Ext(fname)[1:]
+	ext, _ := decompress.GetFormat(fname)
+	ext = ext[1:]
 
 	cidx, e := loncha.IndexOf(Opt.customDecoders, func(i int) bool {
 		return Opt.customDecoders[i].FileType == ext
