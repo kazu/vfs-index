@@ -132,8 +132,16 @@ func (s1 *SearchFinder) Last(opts ...ResultOpt) interface{} {
 	return opts[0](s1.c, []*query.Record{recs[len(recs)-1]})
 }
 
+type SkipType byte
+
+const (
+	SkipFalse SkipType = iota
+	SkipTrue
+	SkipFinish
+)
+
 type RecordFn func(SkipFn) []*query.Record
-type SkipFn func(SkipFn, int) bool
+type SkipFn func(int) SkipType
 type GetColumn func() *Column
 type SearchFinder2 struct {
 	column    GetColumn
@@ -141,8 +149,8 @@ type SearchFinder2 struct {
 	skipdFns  []SkipFn
 }
 
-func EmptySkip(fn SkipFn, i int) bool {
-	return false
+func EmptySkip(i int) SkipType {
+	return SkipFalse
 }
 
 func NewSearchFinder2(c *Column) *SearchFinder2 {
@@ -151,18 +159,31 @@ func NewSearchFinder2(c *Column) *SearchFinder2 {
 		column: func() *Column { return c },
 	}
 }
+func (sf *SearchFinder2) Limit(n int) *SearchFinder2 {
+	size := len(sf.skipdFns)
+	sf.skipdFns[size-1] = sf.limit(n)
+	return sf
+}
 
-func (sf *SearchFinder2) Limit(n int) SkipFn {
+func (sf *SearchFinder2) limit(n int) SkipFn {
 
 	skiped := map[int]bool{}
-	return func(oFn SkipFn, k int) bool {
-		if n-len(skiped) < k {
-			return false
+	idx := len(sf.skipdFns) - 1
+	oFn := EmptySkip
+	if idx > 0 {
+		oFn = sf.skipdFns[idx]
+	}
+	return func(k int) SkipType {
+		if n+len(skiped) <= k {
+			return SkipFinish
 		}
-		if oFn(EmptySkip, k) {
+		if oFn(k) == SkipTrue {
 			skiped[k] = true
 		}
-		return skiped[k]
+		if skiped[k] {
+			return SkipTrue
+		}
+		return SkipFalse
 	}
 
 }
@@ -171,7 +192,13 @@ func (sf *SearchFinder2) And(i int, key uint64) SkipFn {
 	var records []*query.Record
 	var records2 []*query.Record
 
-	return func(oFn SkipFn, k int) bool {
+	idx := len(sf.skipdFns) - 1
+	oFn := EmptySkip
+	if idx > 0 {
+		oFn = sf.skipdFns[idx]
+	}
+
+	return func(k int) SkipType {
 		if len(records) == 0 {
 			records = sf.recordFns[i](oFn)
 		}
@@ -179,8 +206,8 @@ func (sf *SearchFinder2) And(i int, key uint64) SkipFn {
 		if len(records2) == 0 {
 			records2 = idx.RecordByKey(key)(oFn)
 		}
-		if oFn != nil && oFn(EmptySkip, k) {
-			return true
+		if oFn != nil && oFn(k) != SkipFalse {
+			return oFn(k)
 		}
 
 		for j := range records {
@@ -192,13 +219,13 @@ func (sf *SearchFinder2) And(i int, key uint64) SkipFn {
 				}
 			}
 			if !found && k == j {
-				return true
+				return SkipTrue
 			}
 			if j > k {
 				break
 			}
 		}
-		return false
+		return SkipFalse
 	}
 }
 

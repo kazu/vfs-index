@@ -1,6 +1,7 @@
 package vfsindex
 
 import (
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -336,12 +337,7 @@ func (f *IndexFile) Last() *IndexFile {
 		}
 	}
 	if len(afters) > 0 {
-		//sort.Slice(afters, func(i, j int) bool { return i > j })
-		for _, f := range afters {
-			if r := f.Last(); r != nil {
-				return r
-			}
-		}
+		return afters[0]
 	}
 	return nil
 
@@ -450,8 +446,11 @@ func (f *IndexFile) RecordByKey(key uint64) RecordFn {
 			if idx == nil {
 				continue
 			}
+			if skipFn(skipCur) == SkipFinish {
+				return
+			}
 			if idx.IsType(IdxFileType_Write) {
-				if skipFn(EmptySkip, skipCur) {
+				if skipFn(skipCur) == SkipTrue {
 					skipCur++
 					continue
 				}
@@ -462,8 +461,11 @@ func (f *IndexFile) RecordByKey(key uint64) RecordFn {
 					return kr.Key().Uint64() == key
 				})
 				for i := 0; i < kr.Records().Count(); i++ {
-					if skipFn(EmptySkip, skipCur+i) {
+					if skipFn(skipCur+i) == SkipTrue {
 						continue
+					}
+					if skipFn(skipCur) == SkipFinish {
+						return
 					}
 					r, _ := kr.Records().At(i)
 					records = append(records, r)
@@ -508,7 +510,7 @@ func (f *IndexFile) RecordNearByKey(key uint64, less bool) RecordFn {
 		})
 		for i := range midxs {
 			idx := midxs[i]
-			kr := idx.KeyRecords().Find(func(kr *query.KeyRecord) bool {
+			krs := idx.KeyRecords().Select(func(kr *query.KeyRecord) bool {
 				if less && (kr.Key().Uint64() <= key) {
 					return true
 				}
@@ -517,15 +519,21 @@ func (f *IndexFile) RecordNearByKey(key uint64, less bool) RecordFn {
 				}
 				return false
 			})
-			//defer func() { skipCur += kr.Records().Count() }()
-			for i := 0; i < kr.Records().Count(); i++ {
-				if skipFn(EmptySkip, skipCur+i) {
-					continue
+			for _, kr := range krs {
+				//defer func() { skipCur += kr.Records().Count() }()
+				for j := 0; j < kr.Records().Count(); j++ {
+					if skipFn(skipCur+j) == SkipTrue {
+						continue
+					}
+					if skipFn(skipCur+j) == SkipFinish {
+						break
+					}
+
+					r, _ := kr.Records().At(j)
+					records = append(records, r)
 				}
-				r, _ := kr.Records().At(i)
-				records = append(records, r)
+				skipCur += kr.Records().Count()
 			}
-			skipCur += kr.Records().Count()
 		}
 
 		if less {
@@ -561,9 +569,13 @@ func (f *IndexFile) RecordNearByKey(key uint64, less bool) RecordFn {
 				//defer func() { skipCur++ }()
 				if f.IsType(IdxFileType_Write) {
 					defer func() { skipCur++ }()
-					if skipFn(EmptySkip, skipCur) {
+					if skipFn(skipCur) == SkipTrue {
 						return nil
 					}
+					if skipFn(skipCur) == SkipFinish {
+						return errors.New("traverse finish")
+					}
+
 					records = append(records, f.KeyRecord().Value())
 				} else if f.IsType(IdxFileType_Merge) {
 					kr := f.KeyRecords().Find(func(kr *query.KeyRecord) bool {
@@ -571,9 +583,13 @@ func (f *IndexFile) RecordNearByKey(key uint64, less bool) RecordFn {
 					})
 					defer func() { skipCur += kr.Records().Count() }()
 					for i := 0; i < kr.Records().Count(); i++ {
-						if skipFn(EmptySkip, skipCur+i) {
+						if skipFn(skipCur+i) == SkipTrue {
 							continue
 						}
+						if skipFn(skipCur+i) == SkipFinish {
+							return errors.New("traverse finish")
+						}
+
 						r, _ := kr.Records().At(i)
 						records = append(records, r)
 					}

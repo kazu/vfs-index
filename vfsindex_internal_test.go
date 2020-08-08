@@ -129,6 +129,9 @@ func Test_SearchCond_First(t *testing.T) {
 }
 
 func Test_SearchCond_Select(t *testing.T) {
+
+	setup()
+
 	CurrentLogLoevel = LOG_WARN
 	idx, e := Open(DataDir,
 		RootDir(IdxDir))
@@ -146,6 +149,12 @@ func Test_SearchCond_Select(t *testing.T) {
 	}).First(ResultOutput("csv")).(string)
 	fmt.Printf("%s\n", str)
 	assert.True(t, len(str) > 0)
+
+	infs := sCond.Select2(func(cond SearchCondElem2) bool {
+		return cond.Op("id", ">", uint64(0))
+	}).Limit(3).All().([]interface{})
+
+	assert.Equal(t, 3, len(infs))
 
 }
 
@@ -559,4 +568,19 @@ func Test_IndexFile_cleanDirs(t *testing.T) {
 	dirs := c.emptyDirs()
 
 	assert.True(t, len(dirs) == 0)
+}
+
+func Test_Fn(t *testing.T) {
+
+	a := struct {
+		fn func() int
+	}{
+		fn: func() int { return 1 },
+	}
+
+	b := a.fn
+	a.fn = func() int { return 2 }
+
+	assert.Equal(t, 1, b())
+
 }
