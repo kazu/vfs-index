@@ -112,7 +112,7 @@ func Test_SearchStringAll(t *testing.T) {
 	assert.NoError(t, e)
 	assert.True(t, 0 < len(matches.([]interface{})))
 
-	matches2 := sCond.Match("渡辺麻友").All()
+	matches2 := sCond.Match("渡辺麻友").All().([]interface{})
 
 	//result_id, ok := results[0]["id"].(uint64)
 	//idx.Cols["name"].CancelAndWait()
@@ -128,7 +128,7 @@ func Test_SearchSmallString(t *testing.T) {
 	idx, e := OpenIndexer()
 
 	sCond := idx.On("test", vfs.ReaderColumn("title"), vfs.Output(vfs.MapInfOutput))
-	matches := sCond.Match("鬼滅").All()
+	matches := sCond.Match("鬼滅").All().([]interface{})
 
 	assert.NoError(t, e)
 	assert.True(t, 0 == len(matches))
@@ -142,7 +142,7 @@ func Test_SearchQueryt(t *testing.T) {
 	q, _ := expr.GetExpr(qstr)
 
 	sCond := idx.On("test", vfs.ReaderColumn(q.Column), vfs.Output(vfs.MapInfOutput))
-	results := sCond.Query(qstr).All()
+	results := sCond.Query2(qstr).All().([]interface{})
 
 	expected := interface{}(uint64(132763))
 	assert.NoError(t, e)
@@ -158,7 +158,7 @@ func Test_SearchQueryString(t *testing.T) {
 	q, _ := expr.GetExpr(qstr)
 
 	sCond := idx.On("test", vfs.ReaderColumn(q.Column), vfs.Output(vfs.MapInfOutput))
-	results := sCond.Query(qstr).All()
+	results := sCond.Query2(qstr).All().([]interface{})
 
 	assert.NoError(t, e)
 	assert.True(t, 0 < len(results))

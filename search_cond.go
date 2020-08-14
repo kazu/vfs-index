@@ -5,7 +5,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/kazu/loncha"
 	"github.com/kazu/vfs-index/expr"
 	"github.com/kazu/vfs-index/query"
 )
@@ -66,130 +65,7 @@ func TriKeys(s string) (result []uint64) {
 
 }
 
-func (cond *SearchCond) FindBy(col string, kInf interface{}) (sinfo *SearchFinder) {
-
-	var keys []uint64
-	switch k := kInf.(type) {
-	case uint64:
-		keys = append(keys, k)
-	case string:
-		keys = TriKeys(k)
-	}
-
-	return cond.findBy(col, keys)
-}
-
-func (cond *SearchCond) findNearest(col string, key []uint64, less bool) (sinfo *SearchFinder) {
-
-	c := cond.idxCol
-	idxFinder := OpenIndexFile(c)
-	if c.Name != col {
-		// FIXME: findAll()
-		return EmptySearchFinder()
-	}
-	idxs := []*IndexFile{}
-	for i := range key {
-		idxs = append(idxs, idxFinder.FindNearByKey(key[i], less)...)
-	}
-	loncha.Delete(&idxs, func(i int) bool {
-		return idxs[i] == nil
-	})
-
-	return
-}
-
 type findByOption func(*IndexFile, uint64) []*IndexFile
-
-// FIXME: add routine for removing equal key
-func findNearestFn(less bool) findByOption {
-	return func(f *IndexFile, key uint64) []*IndexFile {
-		results := f.FindNearByKey(key, less)
-		// if len(results) == 0 || results[0] == nil {
-		// 	return []*IndexFile{}
-		// }
-		// if less {
-		// 	results[0].first = f.First().IdxInfo().first
-		// }else{
-		// 	results[0].
-		// }
-		return results
-	}
-}
-
-func findEqFn() findByOption {
-	return func(f *IndexFile, key uint64) []*IndexFile {
-		return f.FindByKey(key)
-	}
-}
-
-func (cond *SearchCond) findBy(col string, keys []uint64, fns ...findByOption) (sinfo *SearchFinder) {
-	fn := findEqFn()
-	if len(fns) > 0 {
-		fn = fns[0]
-	}
-
-	c := cond.idxCol
-	idxFinder := OpenIndexFile(c)
-
-	if c.Name != col {
-		// FIXME: findAll()
-		return EmptySearchFinder()
-	}
-
-	key2searchFinder := func(key uint64) *SearchFinder {
-		//idxs := idxFinder.FindByKey(key)
-		idxs := fn(idxFinder, key)
-		if len(idxs) == 0 || idxs[0] == nil {
-			return nil
-		}
-		if idxs[0].IsType(IdxFileType_Write) {
-			return &SearchFinder{
-				c:     c,
-				idxs:  idxs,
-				mode:  SEARCH_ALL,
-				start: key,
-				last:  key,
-			}
-		}
-
-		if idxs[0].IsType(IdxFileType_Merge) {
-			if idxs[0].KeyRecords().Find(func(kr *query.KeyRecord) bool {
-				return kr.Key().Uint64() == key
-			}) == nil {
-				return nil
-			}
-			return &SearchFinder{
-				c:     c,
-				idxs:  idxs,
-				mode:  SEARCH_ALL,
-				start: key,
-				last:  key,
-			}
-		}
-		return nil
-	}
-
-	for _, key := range keys {
-		sinfo2 := key2searchFinder(key)
-		if sinfo2 == nil {
-			return EmptySearchFinder()
-		}
-		if sinfo == nil {
-			sinfo = sinfo2
-			continue
-		}
-		sinfo = sinfo.And(sinfo2)
-	}
-	if sinfo == nil {
-		return &SearchFinder{
-			isEmpty: true,
-		}
-	}
-	if len(sinfo.matches) == 0 && len(keys) > 1 {
-		sinfo.isEmpty = true
-	}
-	return sinfo
-}
 
 const (
 	KeyStateGot int = 1
@@ -197,29 +73,6 @@ const (
 	// KeyStateFlase int = 3
 	KeyStateFinish int = 4
 )
-
-// Deprecated: should use Query2
-func (f *SearchCond) Query(s string) (r *SearchFinder) {
-	q, err := expr.GetExpr(s)
-	c := f.idxCol
-	c.IsNum = c.IsNumViaIndex()
-
-	if err != nil {
-		return EmptySearchFinder()
-	}
-
-	if q.Op == "search" && c.Name == q.Column && !c.IsNum {
-		return f.FindBy(q.Column, q.Value)
-	}
-	if q.Op == "==" {
-		if f.idxCol.IsNum {
-			uintVal, _ := strconv.ParseUint(q.Value, 10, 64)
-			return f.FindBy(q.Column, uintVal)
-		}
-		return f.FindBy(q.Column, q.Value)
-	}
-	return EmptySearchFinder()
-}
 
 func (f *SearchCond) Query2(s string) (r *SearchFinder2) {
 	q, err := expr.GetExpr(s)
@@ -259,9 +112,16 @@ func (f *SearchCond) Query2(s string) (r *SearchFinder2) {
 	})
 }
 
-func (f *SearchCond) Match(s string) *SearchFinder {
+func (f *SearchCond) Match(s string) *SearchFinder2 {
 	c := f.idxCol
 	return f.FindBy(c.Name, s)
+}
+
+func (cond *SearchCond) FindBy(col string, kInf interface{}) (sfinder *SearchFinder2) {
+
+	return cond.Select2(func(e SearchCondElem2) bool {
+		return e.Op(col, "==", kInf)
+	})
 }
 
 func (cond *SearchCond) Select2(fn func(SearchCondElem2) bool) (sfinder *SearchFinder2) {
@@ -379,7 +239,8 @@ var StringOp map[string]CondOp = map[string]CondOp{
 
 type SetKey func(interface{}) []uint64
 type GetCol func() *Column
-type GetValue func(string, CondOp) *SearchFinder
+
+//type GetValue func(string, CondOp) *SearchFinder
 type GetValue2 func(string, CondOp) *SearchFinder2
 
 type SearchCondElem2 struct {
