@@ -241,7 +241,6 @@ func (f *SearchCond) Query2(s string) (r *SearchFinder2) {
 	// 	return f.FindBy(q.Column, q.Value)
 	// }
 	// return EmptySearchFinder()
-
 	if q.Op == "search" && c.Name == q.Column && !c.IsNum {
 		return f.Select2(func(cond SearchCondElem2) bool {
 			return cond.Op(q.Column, "==", q.Value)
@@ -412,7 +411,7 @@ func (cond *SearchCond) StartMerging() {
 	if c.ctx == nil && c.isMergeOnSearch {
 		c.ctx, c.ctxCancel = context.WithTimeout(context.Background(), Opt.mergeDuration)
 		go c.MergingIndex(c.ctx)
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(20 * time.Millisecond)
 	}
 }
 
@@ -444,3 +443,11 @@ func ResultOutput(name string) ResultOpt {
 		return result
 	}
 }
+
+// func DebugOutput(isDebug bool) ResultOpt {
+
+// 	return func(c *Column, qrecs []*query.Record) interface{} {
+
+// 	}
+
+// }

@@ -464,7 +464,8 @@ func (f *IndexFile) RecordByKey(key uint64) RecordFn {
 					if skipFn(skipCur+i) == SkipTrue {
 						continue
 					}
-					if skipFn(skipCur) == SkipFinish {
+					if skipFn(skipCur+i) == SkipFinish {
+						skipCur += i
 						return
 					}
 					r, _ := kr.Records().At(i)

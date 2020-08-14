@@ -73,6 +73,15 @@ func EncodeTri(s string) (result []string) {
 	return
 }
 
+func DecodeTri(v uint64) (s string) {
+
+	runes := make([]rune, 0, 3)
+	for i := 4; i > -1; i -= 2 {
+		runes = append(runes, rune((v>>(i*8))&0xffff))
+	}
+	return string(runes)
+}
+
 func toFname(i interface{}) string {
 	return fmt.Sprintf("%010x", i)
 }

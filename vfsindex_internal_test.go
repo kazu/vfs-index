@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -582,5 +583,18 @@ func Test_Fn(t *testing.T) {
 	a.fn = func() int { return 2 }
 
 	assert.Equal(t, 1, b())
+
+}
+
+func Test_decodeTri(t *testing.T) {
+
+	s := "好きな"
+
+	t3 := EncodeTri(s)
+	assert.Equal(t, 1, len(t3))
+
+	v, _ := strconv.ParseUint(t3[0], 16, 64)
+	vv := (v >> (8 * 4) & 0xffff)
+	assert.Equal(t, s, DecodeTri(v), fmt.Sprintf("s=%s v=0x%x", t3[0], vv))
 
 }

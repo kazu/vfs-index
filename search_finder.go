@@ -8,6 +8,8 @@ import (
 	"github.com/kazu/vfs-index/query"
 )
 
+//go:generate go run golang.org/x/tools/cmd/stringer -type=SkipType
+
 type SearchFinder struct {
 	c       *Column
 	idxs    []*IndexFile
@@ -187,45 +189,59 @@ func (sf *SearchFinder2) limit(n int) SkipFn {
 	}
 
 }
-func (sf *SearchFinder2) And(i int, key uint64) SkipFn {
+func (sf *SearchFinder2) And(i int, key uint64) (result SkipFn) {
 
 	var records []*query.Record
 	var records2 []*query.Record
 
 	idx := len(sf.skipdFns) - 1
 	oFn := EmptySkip
-	if idx > 0 {
+	if idx >= 0 {
 		oFn = sf.skipdFns[idx]
 	}
 
-	return func(k int) SkipType {
+	return func(k int) (r SkipType) {
+		defer func() {
+			if CurrentLogLoevel != LOG_DEBUG {
+				return
+			}
+			Log(LOG_DEBUG, "eval AND(%d,%s) type=%s\n", k, DecodeTri(key), r)
+			if len(records) > k && records[k] != nil {
+				out := ResultOutput("")
+				data := out(sf.column(), []*query.Record{records[k]}).([]interface{})[0].(map[string]interface{})
+				Log(LOG_DEBUG, "\traw=A%s\n", data[sf.column().Name])
+			}
+		}()
+
 		if len(records) == 0 {
-			records = sf.recordFns[i](oFn)
-		}
-		idx := OpenIndexFile(sf.column())
-		if len(records2) == 0 {
-			records2 = idx.RecordByKey(key)(oFn)
+			records = sf.recordFns[i](EmptySkip)
 		}
 		if oFn != nil && oFn(k) != SkipFalse {
 			return oFn(k)
+		}
+		idx := OpenIndexFile(sf.column())
+		if len(records2) == 0 {
+			records2 = idx.RecordByKey(key)(EmptySkip)
 		}
 
 		for j := range records {
 			found := false
 			for i := range records2 {
-				if records[j].FileId().Uint64() == records2[i].FileId().Uint64() {
+				if IsEqQRecord(records[j], records2[i]) {
 					found = true
 					break
 				}
 			}
-			if !found && k == j {
-				return SkipTrue
+			if found && j == k {
+				r = SkipFalse
+				return
 			}
-			if j > k {
+			if j == k {
 				break
 			}
 		}
-		return SkipFalse
+		r = SkipTrue
+		return
 	}
 }
 

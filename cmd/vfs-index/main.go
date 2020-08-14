@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	vfs "github.com/kazu/vfs-index"
@@ -173,7 +174,7 @@ func merge(opt CmdOpt) {
 		fmt.Printf("E: Open(%s) fail errpr=%s\n", opt.dir, e)
 	}
 	sCond := idx.On(opt.table, vfs.ReaderColumn(opt.column),
-		//vfs.MergeDuration(1*time.Second),
+		vfs.MergeDuration(1*time.Minute),
 		vfs.MergeOnSearch(true))
 
 	sCond.StartMerging()
@@ -183,10 +184,11 @@ func merge(opt CmdOpt) {
 }
 
 func search(opt CmdOpt) {
-	vfs.CurrentLogLoevel = vfs.LOG_WARN
-
+	//vfs.CurrentLogLoevel = vfs.LOG_DEBUG
 	vfs.CurrentLogLoevel = vfs.LOG_ERROR
-	//cur, _ := os.Getwd()
+
+	var b strings.Builder
+	vfs.LogWriter = &b
 
 	if len(opt.query) == 0 {
 		fmt.Fprint(os.Stderr, "Search: query is empty\n")
@@ -218,4 +220,6 @@ func search(opt CmdOpt) {
 	}
 	sCond.CancelAndWait()
 
+	out := os.Stderr
+	out.WriteString(b.String())
 }

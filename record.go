@@ -286,3 +286,8 @@ func NewRecord(id uint64, offset, size int64) *Record {
 func (recs Records) Add(r *Record) Records {
 	return append(recs, r)
 }
+
+func IsEqQRecord(src, dst *query.Record) bool {
+	return src.FileId().Uint64() == dst.FileId().Uint64() &&
+		src.Offset().Int64() == dst.Offset().Int64()
+}
