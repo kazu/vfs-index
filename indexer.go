@@ -26,6 +26,10 @@ const (
 var CurrentLogLoevel LogLevel = LOG_DEBUG
 var LogWriter io.StringWriter = os.Stderr
 
+func LogIsDebug() bool {
+	return CurrentLogLoevel == LOG_DEBUG
+}
+
 func Log(l LogLevel, f string, args ...interface{}) {
 
 	if CurrentLogLoevel < l {

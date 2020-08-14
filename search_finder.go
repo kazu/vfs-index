@@ -2,6 +2,7 @@ package vfsindex
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/kazu/loncha"
 	"github.com/kazu/vfs-index/query"
@@ -76,11 +77,14 @@ func (sf *SearchFinder2) And(i int, key uint64) (result SkipFn) {
 	}
 
 	return func(k int) (r SkipType) {
+		s := time.Now()
+
 		defer func() {
+			return
 			if CurrentLogLoevel != LOG_DEBUG {
 				return
 			}
-			Log(LOG_DEBUG, "eval AND(%d,%s) type=%s\n", k, DecodeTri(key), r)
+			Log(LOG_DEBUG, "eval AND(%d,%s) type=%s dur=%s\n", k, DecodeTri(key), r, time.Now().Sub(s))
 			if len(records) > k && records[k] != nil {
 				out := ResultOutput("")
 				data := out(sf.column(), []*query.Record{records[k]}).([]interface{})[0].(map[string]interface{})
@@ -97,6 +101,9 @@ func (sf *SearchFinder2) And(i int, key uint64) (result SkipFn) {
 		idx := OpenIndexFile(sf.column())
 		if len(records2) == 0 {
 			records2 = idx.RecordByKey(key)(EmptySkip)
+		}
+		if len(records2) == 0 {
+			return SkipFinish
 		}
 
 		for j := range records {
@@ -120,11 +127,25 @@ func (sf *SearchFinder2) And(i int, key uint64) (result SkipFn) {
 	}
 }
 
+func MesureElapsed() func(string) string {
+
+	s := time.Now()
+
+	return func(f string) string {
+		return fmt.Sprintf(f, time.Now().Sub(s))
+	}
+}
+
 func (sf *SearchFinder2) All(opts ...ResultOpt) interface{} {
+
+	elapsed := MesureElapsed()
 
 	opts = append(opts, ResultOutput(""))
 
 	recs := sf.Records()
+	if LogIsDebug() {
+		Log(LOG_DEBUG, "SearchFinder.All():Records() %s\n", elapsed("%s"))
+	}
 	loncha.Uniq(&recs, func(i int) interface{} {
 		return fmt.Sprintf("0x%x0x%x", recs[i].FileId().Uint64(), recs[i].Offset().Int64())
 	})

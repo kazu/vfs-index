@@ -440,6 +440,13 @@ func readDirNames(dirname string) ([]string, error) {
 func (f *IndexFile) RecordByKey(key uint64) RecordFn {
 
 	return func(skipFn SkipFn) (records []*query.Record) {
+		elapsed := MesureElapsed()
+		defer func() {
+			if LogIsDebug() {
+				Log(LOG_DEBUG, "RecordByKey(%s) %s\n", DecodeTri(key), elapsed("%s"))
+			}
+		}()
+
 		idxs := f.FindByKey(key)
 		skipCur := 0
 		for _, idx := range idxs {
