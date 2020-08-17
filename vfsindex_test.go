@@ -105,7 +105,7 @@ func Test_SearchStringAll(t *testing.T) {
 
 	sCond := idx.On("test", vfs.ReaderColumn("title"), vfs.Output(vfs.MapInfOutput))
 
-	matches := sCond.Select2(func(cond vfs.SearchCondElem2) bool {
+	matches := sCond.Select(func(cond vfs.SearchElem) bool {
 		return cond.Op("title", "==", "警視庁")
 	}).All()
 
@@ -142,7 +142,7 @@ func Test_SearchQueryt(t *testing.T) {
 	q, _ := expr.GetExpr(qstr)
 
 	sCond := idx.On("test", vfs.ReaderColumn(q.Column), vfs.Output(vfs.MapInfOutput))
-	results := sCond.Query2(qstr).All().([]interface{})
+	results := sCond.Query(qstr).All().([]interface{})
 
 	expected := interface{}(uint64(132763))
 	assert.NoError(t, e)
@@ -158,7 +158,7 @@ func Test_SearchQueryString(t *testing.T) {
 	q, _ := expr.GetExpr(qstr)
 
 	sCond := idx.On("test", vfs.ReaderColumn(q.Column), vfs.Output(vfs.MapInfOutput))
-	results := sCond.Query2(qstr).All().([]interface{})
+	results := sCond.Query(qstr).All().([]interface{})
 
 	assert.NoError(t, e)
 	assert.True(t, 0 < len(results))

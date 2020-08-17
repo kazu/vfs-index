@@ -139,19 +139,19 @@ func Test_SearchCond_Select(t *testing.T) {
 
 	sCond := idx.On("test", ReaderColumn("id"), MergeOnSearch(false))
 
-	str := sCond.Select2(func(cond SearchCondElem2) bool {
+	str := sCond.Select(func(cond SearchElem) bool {
 		return cond.Op("id", "==", uint64(1944367))
 	}).First(ResultOutput("json")).(string)
 	assert.NoError(t, e)
 	assert.True(t, len(str) > 0)
 
-	str = sCond.Select2(func(cond SearchCondElem2) bool {
+	str = sCond.Select(func(cond SearchElem) bool {
 		return cond.Op("id", "==", uint64(1944367))
 	}).First(ResultOutput("csv")).(string)
 	fmt.Printf("%s\n", str)
 	assert.True(t, len(str) > 0)
 
-	infs := sCond.Select2(func(cond SearchCondElem2) bool {
+	infs := sCond.Select(func(cond SearchElem) bool {
 		return cond.Op("id", ">", uint64(0))
 	}).Limit(3).All().([]interface{})
 
@@ -168,7 +168,7 @@ func Test_SearchCond_SelectGram(t *testing.T) {
 
 	sCond := idx.On("test", ReaderColumn("title"), MergeOnSearch(false))
 
-	ostr := sCond.Select2(func(cond SearchCondElem2) bool {
+	ostr := sCond.Select(func(cond SearchElem) bool {
 		return cond.Op("title", "==", "拉致問")
 	}).First(ResultOutput("json"))
 	str, ok := ostr.(string)
@@ -215,7 +215,7 @@ func Test_SearchCondQuery_FirstGram(t *testing.T) {
 
 	sCond := idx.On("test", ReaderColumn("title"), MergeOnSearch(false))
 
-	str := sCond.Query2(`title == "拉致問"`).First(ResultOutput("json")).(string)
+	str := sCond.Query(`title == "拉致問"`).First(ResultOutput("json")).(string)
 
 	assert.NoError(t, e)
 	assert.True(t, len(str) > 0)
@@ -230,7 +230,7 @@ func Test_SearchCondQueryLess_FirstGram(t *testing.T) {
 
 	sCond := idx.On("test", ReaderColumn("title"), MergeOnSearch(false))
 
-	str := sCond.Query2(`title <= "拉致問"`).First(ResultOutput("json")).(string)
+	str := sCond.Query(`title <= "拉致問"`).First(ResultOutput("json")).(string)
 
 	assert.NoError(t, e)
 	assert.True(t, len(str) > 0)
@@ -287,7 +287,7 @@ func Test_IndexFile_Select(t *testing.T) {
 
 	f := OpenIndexFile(c)
 	k2rel := func(key uint64) (ret string) {
-		path := f.c.Key2Path(key, RECORD_WRITTEN)
+		path := f.c.key2Path(key, RECORD_WRITTEN)
 		ret, _ = filepath.Rel(filepath.Join(Opt.rootDir, f.c.TableDir()), path)
 		return
 	}
@@ -452,7 +452,7 @@ func Test_IndexFile_RecordByKey(t *testing.T) {
 
 	fn := finder.recordByKey(keys[0])
 
-	sf2 := NewSearchFinder2(sCond.Column())
+	sf2 := NewSearchFinder(sCond.Column())
 	sf2.recordFns = append(sf2.recordFns, fn)
 	sf2.skipdFns = append(sf2.skipdFns, EmptySkip)
 	sf2.skipdFns[0] = sf2.And(0, keys[1])
@@ -481,7 +481,7 @@ func Test_IndexFile_RecordNearByKey(t *testing.T) {
 
 	fn := finder.RecordNearByKey(key, true)
 
-	sf2 := NewSearchFinder2(sCond.Column())
+	sf2 := NewSearchFinder(sCond.Column())
 	sf2.recordFns = append(sf2.recordFns, fn)
 	sf2.skipdFns = append(sf2.skipdFns, EmptySkip)
 	alls := sf2.All()
@@ -507,7 +507,7 @@ func Test_IndexFile_Select2(t *testing.T) {
 
 	sCond := idx.On("test", ReaderColumn("title"), MergeOnSearch(false))
 
-	results := sCond.Select2(func(cond SearchCondElem2) bool {
+	results := sCond.Select(func(cond SearchElem) bool {
 		return cond.Op("title", "==", "拉致問")
 	}).All().([]interface{})
 

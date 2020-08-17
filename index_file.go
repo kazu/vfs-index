@@ -38,7 +38,7 @@ func OpenIndexFile(c *Column) (idxFile *IndexFile) {
 
 	idxFile = NewIndexFile(c, path)
 	idxFile.Ftype = IdxFileType_Dir
-	c.IsNum = c.IsNumViaIndex()
+	c.IsNum = c.validateIndexType()
 	return
 }
 
@@ -163,7 +163,7 @@ func (f *IndexFile) Select(opts ...SelectOption) (err error) {
 
 	if opt.enableRange {
 		k2rel := func(key uint64) string {
-			path := f.c.Key2Path(key, RECORD_WRITTEN)
+			path := f.c.key2Path(key, RECORD_WRITTEN)
 			ret, _ := filepath.Rel(filepath.Join(Opt.rootDir, f.c.TableDir()), path)
 			return ret
 		}

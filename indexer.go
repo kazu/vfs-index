@@ -84,7 +84,7 @@ func (idx *Indexer) Regist(table, col string) error {
 	flist.Update()
 	flist.Reload()
 
-	idxCol := idx.OpenCol(flist, table, col)
+	idxCol := idx.openCol(flist, table, col)
 	_ = idxCol
 	idxCol.Update(Opt.mergeDuration)
 	idx.Cols[col] = idxCol

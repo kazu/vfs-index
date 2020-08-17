@@ -109,7 +109,7 @@ func ColumnPathWithStatus(tdir, col string, isNum bool, s, e string, status byte
 
 }
 
-func (idx *Indexer) OpenCol(flist *FileList, table, col string) *Column {
+func (idx *Indexer) openCol(flist *FileList, table, col string) *Column {
 
 	return NewColumn(flist, table, col)
 }
@@ -123,7 +123,7 @@ func NewColumn(flist *FileList, table, col string) *Column {
 		Dirties: NewRecords(RECORDS_INIT),
 		cache:   NewIdxCaches(),
 	}
-	c.IsNum = c.IsNumViaIndex()
+	c.IsNum = c.validateIndexType()
 	return c
 }
 
@@ -148,7 +148,7 @@ func (c *Column) Update(d time.Duration) error {
 	// FIXME
 	ctx, cancel := context.WithTimeout(context.Background(), d)
 	//defer cancel()
-	go c.MergingIndex(ctx)
+	go c.mergeIndex(ctx)
 	time.Sleep(d)
 	cancel()
 	<-c.done
@@ -248,11 +248,11 @@ func (c *Column) getIdxWriter() IdxWriter {
 	return idxWriter
 }
 
-func (c *Column) MergingIndex(ctx context.Context) error {
+func (c *Column) mergeIndex(ctx context.Context) error {
 
 	var idxWriter IdxWriter
 
-	if c.IsNumViaIndex() {
+	if c.validateIndexType() {
 		c.IsNum = true
 	}
 
@@ -272,7 +272,7 @@ func (c *Column) MergingIndex(ctx context.Context) error {
 			},
 		}
 	}
-	return c.mergeIndex(idxWriter, ctx)
+	return c.baseMergeIndex(idxWriter, ctx)
 
 }
 func (c *Column) noMergedPat() string {
@@ -357,7 +357,7 @@ func NewIndexInfo(fileID uint64, offset int64, first uint64, last uint64) IndexP
 	}
 }
 
-func (c *Column) IsNumViaIndex() bool {
+func (c *Column) validateIndexType() bool {
 
 	var file *File
 	if len(c.Flist.Files) == 0 {
@@ -389,7 +389,7 @@ func (c *Column) Path() string {
 	return ColumnPath(c.TableDir(), c.Name, c.IsNum)
 }
 
-func (c *Column) mergeIndex(w IdxWriter, ctx context.Context) error {
+func (c *Column) baseMergeIndex(w IdxWriter, ctx context.Context) error {
 
 	c.done = make(chan bool, 2)
 	defer func() {
@@ -585,7 +585,7 @@ func (c *Column) TableDir() string {
 	return filepath.Join(c.Dir, c.Table)
 }
 
-func (c *Column) Key2Path(key uint64, state byte) string {
+func (c *Column) key2Path(key uint64, state byte) string {
 
 	strkey := toFnameTri(key)
 	if c.IsNum {

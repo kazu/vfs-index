@@ -26,7 +26,7 @@ type SearchCond struct {
 type mapInf map[string]interface{}
 
 func (cond *SearchCond) startCol(col string) {
-	cond.idxCol = cond.idx.OpenCol(cond.flist, cond.table, col)
+	cond.idxCol = cond.idx.openCol(cond.flist, cond.table, col)
 	// e := cond.idxCol.caching()
 	// if e != nil {
 	// 	cond.flist.Reload()
@@ -34,7 +34,7 @@ func (cond *SearchCond) startCol(col string) {
 	// 	cond.idxCol.caching()
 	// }
 	cond.column = col
-	cond.idxCol.IsNum = cond.idxCol.IsNumViaIndex()
+	cond.idxCol.IsNum = cond.idxCol.validateIndexType()
 }
 
 // CancelAndWait ... wait for canceld backgraound routine( mainly merging index)
@@ -74,13 +74,13 @@ const (
 	KeyStateFinish int = 4
 )
 
-func (f *SearchCond) Query2(s string) (r *SearchFinder2) {
+func (f *SearchCond) Query(s string) (r *SearchFinder) {
 	q, err := expr.GetExpr(s)
 	c := f.idxCol
-	c.IsNum = c.IsNumViaIndex()
+	c.IsNum = c.validateIndexType()
 
 	if err != nil {
-		return NewSearchFinder2(f.idxCol)
+		return NewSearchFinder(f.idxCol)
 	}
 
 	// if q.Op == "search" && c.Name == q.Column && !c.IsNum {
@@ -95,46 +95,41 @@ func (f *SearchCond) Query2(s string) (r *SearchFinder2) {
 	// }
 	// return EmptySearchFinder()
 	if q.Op == "search" && c.Name == q.Column && !c.IsNum {
-		return f.Select2(func(cond SearchCondElem2) bool {
+		return f.Select(func(cond SearchElem) bool {
 			return cond.Op(q.Column, "==", q.Value)
 		})
 	}
 	var uintVal uint64
 	if f.idxCol.IsNum {
 		uintVal, _ = strconv.ParseUint(q.Value, 10, 64)
-		return f.Select2(func(cond SearchCondElem2) bool {
+		return f.Select(func(cond SearchElem) bool {
 			return cond.Op(q.Column, q.Op, uintVal)
 		})
 	}
 
-	return f.Select2(func(cond SearchCondElem2) bool {
+	return f.Select(func(cond SearchElem) bool {
 		return cond.Op(q.Column, q.Op, q.Value)
 	})
 }
 
-func (f *SearchCond) Match(s string) *SearchFinder2 {
+func (f *SearchCond) Match(s string) *SearchFinder {
 	c := f.idxCol
 	return f.FindBy(c.Name, s)
 }
 
-func (cond *SearchCond) FindBy(col string, kInf interface{}) (sfinder *SearchFinder2) {
+func (cond *SearchCond) FindBy(col string, kInf interface{}) (sfinder *SearchFinder) {
 
-	return cond.Select2(func(e SearchCondElem2) bool {
+	return cond.Select(func(e SearchElem) bool {
 		return e.Op(col, "==", kInf)
 	})
 }
 
-func (cond *SearchCond) Select2(fn func(SearchCondElem2) bool) (sfinder *SearchFinder2) {
-
-	// s := time.Now()
-	// defer func() {
-	// 	fmt.Printf("Select2(): elapsed=%s", time.Now().Sub(s))
-	// }()
+func (cond *SearchCond) Select(fn func(SearchElem) bool) (sfinder *SearchFinder) {
 
 	c := cond.idxCol
 	idxFinder := OpenIndexFile(c)
 
-	sfinder2 := NewSearchFinder2(cond.Column())
+	sfinder2 := NewSearchFinder(cond.Column())
 
 	keys := []uint64{}
 
@@ -156,8 +151,8 @@ func (cond *SearchCond) Select2(fn func(SearchCondElem2) bool) (sfinder *SearchF
 		return cond.idxCol
 	}
 
-	gotVal := func(col string, op CondOp) (sfind *SearchFinder2) {
-		sfind = NewSearchFinder2(cond.Column())
+	gotVal := func(col string, op CondOp) (sfind *SearchFinder) {
+		sfind = NewSearchFinder(cond.Column())
 		switch op {
 		case CondOpEq:
 			for i, key := range keys {
@@ -197,10 +192,10 @@ func (cond *SearchCond) Select2(fn func(SearchCondElem2) bool) (sfinder *SearchF
 		return sfind
 	}
 
-	econd := SearchCondElem2{setKey: setKey, Column: getCol, getValue: gotVal}
+	econd := SearchElem{setKey: setKey, Column: getCol, getValue: gotVal}
 
 	var isTrue bool
-	go func(cond SearchCondElem2) {
+	go func(cond SearchElem) {
 		isTrue = fn(cond)
 		keyState <- KeyStateFinish
 	}(econd)
@@ -237,19 +232,18 @@ var StringOp map[string]CondOp = map[string]CondOp{
 	">":  CondOpGe,
 }
 
-type SetKey func(interface{}) []uint64
-type GetCol func() *Column
+type KeySetter func(interface{}) []uint64
+type ColGetter func() *Column
 
-//type GetValue func(string, CondOp) *SearchFinder
-type GetValue2 func(string, CondOp) *SearchFinder2
+type ValueGetter func(string, CondOp) *SearchFinder
 
-type SearchCondElem2 struct {
-	setKey   SetKey
-	Column   GetCol
-	getValue GetValue2
+type SearchElem struct {
+	setKey   KeySetter
+	Column   ColGetter
+	getValue ValueGetter
 }
 
-func (cond SearchCondElem2) Op(col, op string, v interface{}) (result bool) {
+func (cond SearchElem) Op(col, op string, v interface{}) (result bool) {
 
 	if col != cond.Column().Name {
 		return false
@@ -271,7 +265,7 @@ func (cond *SearchCond) StartMerging() {
 	//c.IsNum = c.IsNumViaIndex()
 	if c.ctx == nil && c.isMergeOnSearch {
 		c.ctx, c.ctxCancel = context.WithTimeout(context.Background(), Opt.mergeDuration)
-		go c.MergingIndex(c.ctx)
+		go c.mergeIndex(c.ctx)
 		time.Sleep(20 * time.Millisecond)
 	}
 }

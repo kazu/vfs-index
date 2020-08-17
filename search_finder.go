@@ -21,7 +21,7 @@ const (
 type RecordFn func(SkipFn) []*query.Record
 type SkipFn func(int) SkipType
 type GetColumn func() *Column
-type SearchFinder2 struct {
+type SearchFinder struct {
 	column    GetColumn
 	recordFns []RecordFn
 	skipdFns  []SkipFn
@@ -31,19 +31,19 @@ func EmptySkip(i int) SkipType {
 	return SkipFalse
 }
 
-func NewSearchFinder2(c *Column) *SearchFinder2 {
+func NewSearchFinder(c *Column) *SearchFinder {
 
-	return &SearchFinder2{
+	return &SearchFinder{
 		column: func() *Column { return c },
 	}
 }
-func (sf *SearchFinder2) Limit(n int) *SearchFinder2 {
+func (sf *SearchFinder) Limit(n int) *SearchFinder {
 	size := len(sf.skipdFns)
 	sf.skipdFns[size-1] = sf.limit(n)
 	return sf
 }
 
-func (sf *SearchFinder2) limit(n int) SkipFn {
+func (sf *SearchFinder) limit(n int) SkipFn {
 
 	skiped := map[int]bool{}
 	idx := len(sf.skipdFns) - 1
@@ -65,7 +65,7 @@ func (sf *SearchFinder2) limit(n int) SkipFn {
 	}
 
 }
-func (sf *SearchFinder2) And(i int, key uint64) (result SkipFn) {
+func (sf *SearchFinder) And(i int, key uint64) (result SkipFn) {
 
 	var records []*query.Record
 	var records2 []*query.Record
@@ -136,7 +136,7 @@ func MesureElapsed() func(string) string {
 	}
 }
 
-func (sf *SearchFinder2) All(opts ...ResultOpt) interface{} {
+func (sf *SearchFinder) All(opts ...ResultOpt) interface{} {
 
 	elapsed := MesureElapsed()
 
@@ -156,18 +156,18 @@ func (sf *SearchFinder2) All(opts ...ResultOpt) interface{} {
 	return opts[0](sf.column(), recs)
 
 }
-func (sf *SearchFinder2) Records() (recs []*query.Record) {
+func (sf *SearchFinder) Records() (recs []*query.Record) {
 	for i := range sf.recordFns {
 		recs = append(recs, sf.recordFns[i](sf.skipdFns[i])...)
 	}
 	return
 }
 
-func (sf *SearchFinder2) Count() int {
+func (sf *SearchFinder) Count() int {
 	return len(sf.recordFns)
 }
 
-func (sf *SearchFinder2) First(opts ...ResultOpt) interface{} {
+func (sf *SearchFinder) First(opts ...ResultOpt) interface{} {
 
 	opts = append(opts, ResultOutput(""))
 
@@ -180,7 +180,7 @@ func (sf *SearchFinder2) First(opts ...ResultOpt) interface{} {
 
 }
 
-func (sf *SearchFinder2) Last(opts ...ResultOpt) interface{} {
+func (sf *SearchFinder) Last(opts ...ResultOpt) interface{} {
 
 	opts = append(opts, ResultOutput(""))
 

@@ -212,10 +212,10 @@ func search(opt CmdOpt) {
 	sCond := idx.On(opt.table, vfs.ReaderColumn(opt.column), vfs.MergeOnSearch(!opt.nomerge))
 
 	if opt.first {
-		result := sCond.Query2(opt.query).First(vfs.ResultOutput(opt.output))
+		result := sCond.Query(opt.query).First(vfs.ResultOutput(opt.output))
 		fmt.Printf("%s\n", result)
 	} else {
-		results := sCond.Query2(opt.query).All(vfs.ResultOutput(opt.output))
+		results := sCond.Query(opt.query).All(vfs.ResultOutput(opt.output))
 		fmt.Printf("%s\n", results)
 	}
 	sCond.CancelAndWait()
