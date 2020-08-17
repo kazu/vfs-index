@@ -598,3 +598,24 @@ func Test_decodeTri(t *testing.T) {
 	assert.Equal(t, s, DecodeTri(v), fmt.Sprintf("s=%s v=0x%x", t3[0], vv))
 
 }
+
+func Test_countByIndexFile(t *testing.T) {
+
+	setup()
+
+	CurrentLogLoevel = LOG_WARN
+	idx, _ := Open(DataDir, RootDir(IdxDir))
+
+	sCond :=
+		idx.On("test",
+			MergeDuration(1*time.Second),
+			ReaderColumn("content"),
+			MergeOnSearch(false))
+
+	c := sCond.Column()
+	finder := OpenIndexFile(c)
+	tris := TriKeys("活動内")
+	cnt := finder.countBy(tris[0])
+
+	assert.Equal(t, cnt, 4)
+}
