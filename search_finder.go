@@ -102,7 +102,7 @@ func (sf *SearchFinder2) And(i int, key uint64) (result SkipFn) {
 		if len(records2) == 0 {
 			records2 = idx.RecordByKey(key)(EmptySkip)
 		}
-		if len(records2) == 0 {
+		if len(records) == 0 || len(records2) == 0 {
 			return SkipFinish
 		}
 

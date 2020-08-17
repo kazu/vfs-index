@@ -438,6 +438,82 @@ func readDirNames(dirname string) ([]string, error) {
 }
 
 func (f *IndexFile) RecordByKey(key uint64) RecordFn {
+	return f.recordByKey(key)
+}
+
+type RecordInfoArg struct {
+	isKeyRecord bool
+	rec         *query.InvertedMapNum
+	kr          *query.KeyRecord
+	sCur        int
+	krSfn       SkipFn
+}
+
+func (f *IndexFile) countBy(key uint64) (cnt int) {
+	cnt = 0
+	f.recordInfoByKey(key, func(arg RecordInfoArg) {
+		if !arg.isKeyRecord {
+			cnt++
+			return
+		}
+
+		for i := 0; i < arg.kr.Records().Count(); i++ {
+			if arg.krSfn(arg.sCur+i) == SkipTrue {
+				continue
+			}
+			if arg.krSfn(arg.sCur+i) == SkipFinish {
+				//skipCur += i
+				return
+			}
+			cnt++
+		}
+	})(EmptySkip)
+	return cnt
+}
+
+type ResultFn func(SkipFn)
+type InfoFn func(RecordInfoArg)
+
+func (f *IndexFile) recordInfoByKey(key uint64, fn InfoFn) ResultFn {
+
+	return func(skipFn SkipFn) {
+		elapsed := MesureElapsed()
+		defer func() {
+			if LogIsDebug() {
+				Log(LOG_DEBUG, "RecordByKey(%s) %s\n", DecodeTri(key), elapsed("%s"))
+			}
+		}()
+
+		idxs := f.FindByKey(key)
+		skipCur := 0
+		for _, idx := range idxs {
+			if idx == nil {
+				continue
+			}
+			if skipFn(skipCur) == SkipFinish {
+				return
+			}
+			if idx.IsType(IdxFileType_Write) {
+				if skipFn(skipCur) == SkipTrue {
+					skipCur++
+					continue
+				}
+				fn(RecordInfoArg{false, idx.KeyRecord(), nil, skipCur, skipFn})
+				//records = append(records, idx.KeyRecord().Value())
+				skipCur++
+			} else if idx.IsType(IdxFileType_Merge) {
+				kr := idx.KeyRecords().Find(func(kr *query.KeyRecord) bool {
+					return kr.Key().Uint64() == key
+				})
+				fn(RecordInfoArg{true, nil, kr, skipCur, skipFn})
+				skipCur += kr.Records().Count()
+			}
+		}
+		return
+	}
+}
+
+func (f *IndexFile) recordByKey(key uint64) RecordFn {
 
 	return func(skipFn SkipFn) (records []*query.Record) {
 		elapsed := MesureElapsed()
