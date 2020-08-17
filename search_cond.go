@@ -162,7 +162,7 @@ func (cond *SearchCond) Select2(fn func(SearchCondElem2) bool) (sfinder *SearchF
 		case CondOpEq:
 			for i, key := range keys {
 				if i == 0 {
-					sfind.recordFns = append(sfind.recordFns, idxFinder.RecordByKey(key))
+					sfind.recordFns = append(sfind.recordFns, idxFinder.recordByKey(key))
 					sfind.skipdFns = append(sfind.skipdFns, EmptySkip)
 				}
 				lastIdx := len(sfind.recordFns) - 1

@@ -100,7 +100,7 @@ func (sf *SearchFinder2) And(i int, key uint64) (result SkipFn) {
 		}
 		idx := OpenIndexFile(sf.column())
 		if len(records2) == 0 {
-			records2 = idx.RecordByKey(key)(EmptySkip)
+			records2 = idx.recordByKey(key)(EmptySkip)
 		}
 		if len(records) == 0 || len(records2) == 0 {
 			return SkipFinish

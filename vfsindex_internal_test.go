@@ -450,7 +450,7 @@ func Test_IndexFile_RecordByKey(t *testing.T) {
 
 	keys := TriKeys("拉致問題")
 
-	fn := finder.RecordByKey(keys[0])
+	fn := finder.recordByKey(keys[0])
 
 	sf2 := NewSearchFinder2(sCond.Column())
 	sf2.recordFns = append(sf2.recordFns, fn)
@@ -619,3 +619,47 @@ func Test_countByIndexFile(t *testing.T) {
 
 	assert.Equal(t, cnt, 4)
 }
+
+// func Test_RecordByKey2(t *testing.T) {
+
+// 	setup()
+
+// 	CurrentLogLoevel = LOG_WARN
+// 	idx, _ := Open(DataDir, RootDir(IdxDir))
+
+// 	sCond :=
+// 		idx.On("test",
+// 			MergeDuration(1*time.Second),
+// 			ReaderColumn("content"),
+// 			MergeOnSearch(false))
+
+// 	c := sCond.Column()
+// 	finder := OpenIndexFile(c)
+// 	tris := TriKeys("活動内")
+// 	//cnt := finder.countBy(tris[0])
+// 	qr1 := finder.recordByKey(tris[0])(EmptySkip)
+// 	qr2 := finder.RecordByKey2(tris[0])(EmptySkip)
+// 	assert.Equal(t, qr1, qr2)
+
+// 	type TRecord struct {
+// 		fileID uint64
+// 		offset int64
+// 		size   int64
+// 	}
+
+// 	fn := func(qr *query.Record) TRecord {
+// 		return TRecord{
+// 			qr.FileId().Uint64(),
+// 			qr.Offset().Int64(),
+// 			qr.Size().Int64(),
+// 		}
+// 	}
+// 	assert.Equal(t, len(qr1), len(qr2))
+// 	if len(qr1) != len(qr2) {
+// 		return
+// 	}
+// 	for i := range qr1 {
+// 		assert.Equal(t, fn(qr1[i]), fn(qr2[i]), i)
+// 	}
+// 	assert.NotEqual(t, TRecord{1, 0, 0}, TRecord{2, 0, 0})
+// }
