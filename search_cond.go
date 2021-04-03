@@ -42,6 +42,10 @@ func (cond *SearchCond) CancelAndWait() {
 	cond.idxCol.cancelAndWait()
 }
 
+func (cond *SearchCond) ReloadFileList() {
+	cond.flist.Reload()
+}
+
 func TriKeys(s string) (result []uint64) {
 
 	//	var strs []string
