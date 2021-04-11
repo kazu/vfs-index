@@ -2,6 +2,7 @@ package vfsindex
 
 import (
 	"context"
+	"sort"
 	"strconv"
 	"time"
 
@@ -66,7 +67,6 @@ func TriKeys(s string) (result []uint64) {
 	}
 
 	return
-
 }
 
 type findByOption func(*IndexFile, uint64) []*IndexFile
@@ -146,7 +146,11 @@ func (cond *SearchCond) Select(fn func(SearchElem) bool) (sfinder *SearchFinder)
 		case int:
 			keys = append(keys, uint64(k))
 		case string:
-			keys = append(keys, TriKeys(k)...)
+			tmps := TriKeys(k)
+			sort.Slice(tmps, func(i, j int) bool {
+				return idxFinder.countBy(tmps[i]) < idxFinder.countBy(tmps[j])
+			})
+			keys = append(keys, tmps...)
 		}
 		keyState <- KeyStateGot
 		return keys
