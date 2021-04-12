@@ -132,7 +132,18 @@ func main() {
 		}
 		if opt.qstdin {
 			line, _, _ := bufio.NewReader(os.Stdin).ReadLine()
-			opt.query = fmt.Sprintf("%s.search(\"%s\")", opt.column, line)
+			if strs := strings.Fields(string(line)); len(strs) > 0 {
+				for i, str := range strs {
+					nstr := fmt.Sprintf("%s.search(\"%s\")", opt.column, str)
+					if i == 0 {
+						opt.query = nstr
+					} else {
+						opt.query += ` && ` + nstr
+					}
+				}
+			} else {
+				opt.query = fmt.Sprintf("%s.search(\"%s\")", opt.column, line)
+			}
 		}
 		search(opt)
 	case "merge":

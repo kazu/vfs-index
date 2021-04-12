@@ -2,16 +2,13 @@ package expr
 
 type Parser Peg {
     Qexpr
-    Column string
-	Op     string
-	Value  string
 }
 
 # schema <- column end_of_file
-schema <- num_op / search
-search <- column '.' 'search(' value ')' end_of_file {p.Op = "search" }
-num_op <- column spacing op spacing value end_of_file
-
+scheme <- expr  (spacing and spacing expr)* end_of_file
+expr <- num_op / search
+search <- column '.' 'search(' value ')' {p.PushOp("search")}
+num_op <- column spacing op spacing value {p.Push() }
 
 op <- eq_op / le_op / lt_op / ge_op / gt_op
 eq_op <- '==' {p.Op = "==" }
@@ -20,13 +17,15 @@ lt_op <- '<'  {p.Op = "<"}
 ge_op <- '>=' {p.Op = ">=" }
 gt_op <- '>'  {p.Op = ">"}
 
+and <- '&&'
+
 column <- ident {p.Column = text }
 
 value <- '"' raw '"' / raw
 
 raw <- ident {p.Value = text}
 
-ident <- <[^=><()" .]*>
+ident <- <[^=><()" .&]*>
 spacing <- space*
 space <- ' ' / '\t'
 

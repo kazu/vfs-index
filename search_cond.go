@@ -83,21 +83,28 @@ func (f *SearchCond) Query(s string) (r *SearchFinder) {
 	c := f.idxCol
 	c.IsNum = c.validateIndexType()
 
+	if len(q.Ands) == 1 && err == nil {
+		return f.query(&q.Expr)
+	}
+
 	if err != nil {
 		return NewSearchFinder(f.idxCol)
 	}
 
-	// if q.Op == "search" && c.Name == q.Column && !c.IsNum {
-	// 	return f.FindBy(q.Column, q.Value)
-	// }
-	// if q.Op == "==" {
-	// 	if f.idxCol.IsNum {
-	// 		uintVal, _ := strconv.ParseUint(q.Value, 10, 64)
-	// 		return f.FindBy(q.Column, uintVal)
-	// 	}
-	// 	return f.FindBy(q.Column, q.Value)
-	// }
-	// return EmptySearchFinder()
+	for i, expr := range q.Ands {
+		if i == 0 {
+			r = f.query(&expr)
+			continue
+		}
+		r.MergeAsAnd(f.query(&expr))
+	}
+
+	return
+}
+
+func (f *SearchCond) query(q *expr.Expr) (r *SearchFinder) {
+	c := f.idxCol
+
 	if q.Op == "search" && c.Name == q.Column && !c.IsNum {
 		return f.Select(func(cond SearchElem) bool {
 			return cond.Op(q.Column, "==", q.Value)
@@ -196,6 +203,7 @@ func (cond *SearchCond) Select(fn func(SearchElem) bool) (sfinder *SearchFinder)
 				}
 			}
 		}
+		sfind.keys = keys
 		sfinder = sfind
 		return sfind
 	}
@@ -260,7 +268,6 @@ func (cond SearchElem) Op(col, op string, v interface{}) (result bool) {
 	keys := cond.setKey(v)
 	_ = keys
 	finder := cond.getValue(col, StringOp[op])
-
 	return finder != nil
 }
 

@@ -25,6 +25,7 @@ type SearchFinder struct {
 	column    GetColumn
 	recordFns []RecordFn
 	skipdFns  []SkipFn
+	keys      []uint64
 }
 
 func EmptySkip(i int) SkipType {
@@ -65,6 +66,14 @@ func (sf *SearchFinder) limit(n int) SkipFn {
 	}
 
 }
+
+func (sf *SearchFinder) MergeAsAnd(src *SearchFinder) {
+	for _, key := range src.keys {
+		lastIdx := len(sf.recordFns) - 1
+		sf.skipdFns[lastIdx] = sf.And(lastIdx, key)
+	}
+}
+
 func (sf *SearchFinder) And(i int, key uint64) (result SkipFn) {
 
 	var records []*query.Record
