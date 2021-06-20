@@ -34,7 +34,7 @@
 	"workspaceFolder": "/workspace/vfs-index",
 	"workspaceMount": "source=vfs-index,target=/workspace,type=volume,consistency=cached",
 	"overrideCommand": false,
-	"postCreateCommand": "git clone https://github.com/kazu/vf-index.git .",
+	"postCreateCommand": "git clone https://github.com/kazu/vfs-index.git .",
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.
 	// "forwardPorts": [],
 
