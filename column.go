@@ -595,6 +595,10 @@ func (c *Column) key2Path(key uint64, state byte) string {
 
 }
 
+func (c *Column) CleanDirs() (cnt int) {
+	return c.cleanDirs()
+}
+
 func (c *Column) cleanDirs() (cnt int) {
 	dirs := c.emptyDirs()
 	cnt = len(dirs)
@@ -616,13 +620,16 @@ func (c *Column) emptyDirs() []string {
 		OptCcondFn(func(f *IndexFile) CondType {
 			if f.IsType(IdxFileType_Dir) {
 				if names, _ := readDirNames(f.Path); len(names) == 0 {
+					//					fmt.Fprintf(os.Stderr, "found empty %s\n", f.Path)
 					return CondTrue
 				}
+				//				fmt.Fprintf(os.Stderr, "to depth %s\n", f.Path)
 				return CondLazy
 			}
 			return CondFalse
 		}),
 		OptTraverse(func(f *IndexFile) error {
+			//			fmt.Fprintf(os.Stderr, "found empty %s\n", f.Path)
 			rDirs = append(rDirs, f.Path)
 			return nil
 		}),

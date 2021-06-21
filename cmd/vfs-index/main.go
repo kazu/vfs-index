@@ -70,10 +70,23 @@ Flags:
 	-data		data directory
 	-h,-help    help for merge
 `
+const UsageInfo string = `get information index files
+
+Usage:
+	vfs-index info
+
+Flags:	
+	-index  	directory for index data
+	-column		column name for index  
+	-table		table name for index. prefix name in data file
+	-data		data directory
+	-info       indexfile
+	-h,-help    help for merge
+`
 
 type CmdOpt struct {
-	indexDir, column, table, dir, query, output string
-	first, help, nomerge, qstdin                bool
+	indexDir, column, table, dir, query, output, info string
+	first, help, nomerge, qstdin                      bool
 }
 
 func main() {
@@ -88,11 +101,12 @@ func main() {
 	switch os.Args[1] {
 	case "index":
 		flagCmd = flag.NewFlagSet("index", flag.ExitOnError)
-
 	case "search":
 		flagCmd = flag.NewFlagSet("search", flag.ExitOnError)
 	case "merge":
 		flagCmd = flag.NewFlagSet("merge", flag.ExitOnError)
+	case "info":
+		flagCmd = flag.NewFlagSet("info", flag.ExitOnError)
 	}
 	opt := CmdOpt{}
 
@@ -112,6 +126,8 @@ func main() {
 
 	flagCmd.StringVar(&opt.output, "output", "json", "output format")
 	flagCmd.StringVar(&opt.output, "o", "json", "output format"+"()shorthand")
+
+	flagCmd.StringVar(&opt.info, "info", "", "get infomation indexfile")
 
 	flagCmd.BoolVar(&opt.help, "help", false, "help")
 	flagCmd.BoolVar(&opt.help, "h", false, "help (shorthand)")
@@ -152,6 +168,12 @@ func main() {
 			return
 		}
 		merge(opt)
+	case "info":
+		if opt.help || len(os.Args) < 3 {
+			fmt.Println(UsageInfo)
+			return
+		}
+		info(opt)
 	default:
 		if opt.help {
 			fmt.Println(Usage)
@@ -191,6 +213,38 @@ func merge(opt CmdOpt) {
 	sCond.StartMerging()
 	time.Sleep(1 * time.Minute)
 	sCond.CancelAndWait()
+}
+
+func info(opt CmdOpt) {
+	vfs.CurrentLogLoevel = vfs.LOG_WARN
+	//vfs.CurrentLogLoevel = vfs.LOG_DEBUG
+
+	idx, e := vfs.Open(opt.dir, vfs.RootDir(opt.indexDir))
+
+	if e != nil {
+		fmt.Printf("E: Open(%s) fail errpr=%s\n", opt.dir, e)
+	}
+	sCond := idx.On(opt.table, vfs.ReaderColumn(opt.column),
+		vfs.MergeDuration(1*time.Minute),
+		vfs.MergeOnSearch(true))
+	//sCond.IndexFile().Column().CleanDirs()
+	if opt.info == "" {
+		return
+	}
+	f := vfs.NewIndexFile(sCond.IndexFile().Column(), opt.info)
+	f.Init()
+
+	switch f.Ftype {
+	case vfs.IdxFileType_Merge:
+		for _, kr := range f.KeyRecords().All() {
+			fmt.Printf("key=0x%0x count=%d\n", kr.Key().Uint64(), kr.Records().Count())
+		}
+		return
+	case vfs.IdxFileType_Write:
+		kr := f.KeyRecord()
+		fmt.Printf("key=0x%0x count=%d\n", kr.Key().Uint64(), 1)
+		return
+	}
 
 }
 

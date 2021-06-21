@@ -48,6 +48,9 @@ func NewIndexFile(c *Column, path string) *IndexFile {
 		c:    c,
 	}
 }
+func (f IndexFile) Column() *Column {
+	return f.c
+}
 
 func (f *IndexFile) IsType(t IndexFileType) bool {
 	return f.Ftype&t > 0

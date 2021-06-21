@@ -26,6 +26,12 @@ type SearchCond struct {
 
 type mapInf map[string]interface{}
 
+func (cond *SearchCond) IndexFile() *IndexFile {
+	//cond.indexColo
+	return OpenIndexFile(cond.idxCol)
+
+}
+
 func (cond *SearchCond) startCol(col string) {
 	cond.idxCol = cond.idx.openCol(cond.flist, cond.table, col)
 	// e := cond.idxCol.caching()
