@@ -3,17 +3,19 @@ package vfsindex
 import "time"
 
 var Opt optionState = optionState{
-	mergeDuration: 1 * time.Minute,
+	mergeDuration:      1 * time.Minute,
+	cleanAfterMergeing: true,
 }
 
 type optionState struct {
-	column           string
-	output           Outputer
-	rootDir          string
-	idxMergeOnSearch bool
-	cntConcurrent    int
-	mergeDuration    time.Duration
-	customDecoders   []Decoder
+	column             string
+	output             Outputer
+	rootDir            string
+	idxMergeOnSearch   bool
+	cntConcurrent      int
+	mergeDuration      time.Duration
+	customDecoders     []Decoder
+	cleanAfterMergeing bool
 }
 
 //type ReaderOpt map[string]string
@@ -70,5 +72,11 @@ func RegitConcurrent(n int) Option {
 func MergeDuration(d time.Duration) Option {
 	return func(opt *optionState) {
 		opt.mergeDuration = d
+	}
+}
+
+func EnableCleanAfterMerge(t bool) Option {
+	return func(opt *optionState) {
+		opt.cleanAfterMergeing = t
 	}
 }

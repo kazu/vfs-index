@@ -561,8 +561,9 @@ func (c *Column) baseMergeIndex(w IdxWriter, ctx context.Context) error {
 		os.Remove(f.Path)
 	}
 	Log(LOG_DEBUG, "S: remove merged files count=%d \n", len(noMergeIdxFiles))
-	c.cleanDirs()
-
+	if Opt.cleanAfterMergeing {
+		c.cleanDirs()
+	}
 	return nil
 }
 
