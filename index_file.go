@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/kazu/loncha"
 
@@ -1233,4 +1234,31 @@ func (l *IndexFile) removeWithParent(finder *IndexFile) (require_clean bool, e e
 		}
 
 	}
+}
+
+// ToIndexFileMerged ... convert to IndexFileMerged
+func ToIndexFileMerged(l *IndexFile) *IndexFileMerged {
+
+	if l.Ftype != IdxFileType_Merge {
+		return nil
+	}
+
+	return &IndexFileMerged{
+		IndexFile: l,
+	}
+}
+
+// IndexFileMerged ... accessor for merge type index file
+type IndexFileMerged struct {
+	*IndexFile
+}
+
+// OpenIndexFileMerged ... return IndexFileMerged
+func OpenIndexFileMerged(table, column, path string, idxer *Indexer) *IndexFileMerged {
+	sCond := idxer.On(table, ReaderColumn(column),
+		MergeDuration(1*time.Minute),
+		MergeOnSearch(true))
+	f := NewIndexFile(sCond.IndexFile().Column(), path)
+	f.Init()
+	return ToIndexFileMerged(f)
 }
