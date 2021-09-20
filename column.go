@@ -613,9 +613,9 @@ func (c *Column) CleanDirs() (cnt int) {
 
 func (c *Column) cleanDirs() (cnt int) {
 	dirs := c.emptyDirs()
-	//bar.SetTotal(int64(100), true)
 	cnt = len(dirs)
 	bar := Pbar.Add("clean empty dir", cnt)
+
 	for _, dir := range dirs {
 		bar.Increment()
 		os.RemoveAll(dir)
@@ -631,6 +631,9 @@ func (c *Column) emptyDirs() []string {
 
 	rDirs := []string{}
 	finder := OpenIndexFile(c)
+
+	bar := Pbar.Add("find empty dir", 100)
+
 	finder.Select(
 		OptAsc(true),
 		OptCcondFn(func(f *IndexFile) CondType {
@@ -647,10 +650,14 @@ func (c *Column) emptyDirs() []string {
 		OptTraverse(func(f *IndexFile) error {
 			//			fmt.Fprintf(os.Stderr, "found empty %s\n", f.Path)
 			rDirs = append(rDirs, f.Path)
+			bar.Increment()
+			if len(rDirs)/2 < int(bar.Current()) {
+				bar.SetTotal(int64(len(rDirs)*2), false)
+			}
 			return nil
 		}),
 	)
-
+	bar.SetTotal(int64(len(rDirs)), true)
 	return rDirs
 }
 
