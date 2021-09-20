@@ -502,9 +502,17 @@ func (c *Column) baseMergeIndex(w IdxWriter, ctx context.Context) error {
 			return nil
 		}),
 	)
-	defer func() {
+
+	calledDefer := false
+	deferFn := func() {
 		bar.SetTotal(int64(i), true)
-		//Pbar.wg.Done()
+		calledDefer = true
+	}
+
+	defer func() {
+		if calledDefer {
+			deferFn()
+		}
 	}()
 
 	cnt := keyrecords.Count()
@@ -560,6 +568,9 @@ func (c *Column) baseMergeIndex(w IdxWriter, ctx context.Context) error {
 	for _, f := range noMergeIdxFiles {
 		os.Remove(f.Path)
 	}
+
+	deferFn()
+
 	Log(LOG_DEBUG, "S: remove merged files count=%d \n", len(noMergeIdxFiles))
 	if Opt.cleanAfterMergeing {
 		c.cleanDirs()
@@ -602,10 +613,14 @@ func (c *Column) CleanDirs() (cnt int) {
 
 func (c *Column) cleanDirs() (cnt int) {
 	dirs := c.emptyDirs()
+	//bar.SetTotal(int64(100), true)
 	cnt = len(dirs)
+	bar := Pbar.Add("clean empty dir", cnt)
 	for _, dir := range dirs {
+		bar.Increment()
 		os.RemoveAll(dir)
 	}
+	bar.SetTotal(int64(cnt), true)
 	if cnt > 0 {
 		c.cleanDirs()
 	}
