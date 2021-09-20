@@ -10,11 +10,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kazu/fbshelper/query/base"
 	"github.com/kazu/loncha"
 
 	"github.com/kazu/vfs-index/query"
+	"github.com/kazu/vfs-index/vfs_schema"
 )
 
+// IndexFileType ... type of Index File
 type IndexFileType int
 
 const (
@@ -24,6 +27,16 @@ const (
 	IdxFileType_Write
 	IdxFileType_MyColum
 	IdxFileType_NoComplete
+)
+
+// IndexMergeFileType .. type of Merge Index File
+type IndexMergeFileType int
+
+const (
+	IdxMergedFileState_None    IndexMergeFileType = 0
+	IdxMergedFileState_Writing IndexMergeFileType = 1 << iota
+	IdxMergedFileState_Writen
+	IdxMergedFileState_Dirty
 )
 
 // IndexFile ... file entity of index file in index table directories
@@ -1245,12 +1258,16 @@ func ToIndexFileMerged(l *IndexFile) *IndexFileMerged {
 
 	return &IndexFileMerged{
 		IndexFile: l,
+		State:     IdxMergedFileState_Writen,
 	}
 }
 
 // IndexFileMerged ... accessor for merge type index file
 type IndexFileMerged struct {
 	*IndexFile
+	State      IndexMergeFileType
+	root       *query.Root
+	keyReocrds *query.KeyRecordList
 }
 
 // OpenIndexFileMerged ... return IndexFileMerged
@@ -1261,4 +1278,97 @@ func OpenIndexFileMerged(table, column, path string, idxer *Indexer) *IndexFileM
 	f := NewIndexFile(sCond.IndexFile().Column(), path)
 	f.Init()
 	return ToIndexFileMerged(f)
+}
+
+func MakeMergedIndexFile() *IndexFileMerged {
+
+	root := query.NewRoot()
+	root.SetVersion(query.FromInt32(1))
+	root.WithHeader()
+	root.SetIndexType(query.FromByte(byte(vfs_schema.IndexIndexNum)))
+	root.Flatten()
+
+	idxNum := query.NewIndexNum()
+	idxNum.Base = base.NewNoLayer(idxNum.Base)
+	keyrecords := query.NewKeyRecordList()
+	keyrecords.Base = base.NewNoLayer(keyrecords.Base)
+
+	return &IndexFileMerged{
+		State:      IdxMergedFileState_None,
+		root:       root,
+		keyReocrds: keyrecords,
+	}
+
+}
+
+// Merge ... Join multiple index merged file
+func (src *IndexFileMerged) Merge(srcs ...*IndexFileMerged) (dst *IndexFileMerged, e error) {
+
+	dst = MakeMergedIndexFile()
+	cnt := 0
+
+	for _, s := range srcs {
+		cnt += s.KeyRecords().Count()
+		// for _, kr := range s.KeyRecords().All() {
+		// 	cnt := dst.keyReocrds.Count()
+		// 	dst.keyReocrds.SetAt(cnt, kr)
+		// }
+	}
+
+	WithoutError := func(kr *query.KeyRecord, e error) *query.KeyRecord {
+		if e != nil {
+			return nil
+		}
+		return kr
+	}
+
+	krs := make([]*query.KeyRecord, 0, cnt)
+	for _, s := range srcs {
+		if len(krs) > 0 {
+			// loncha.IndexOf(&krs, func(i int ) bool {
+			// 	found_idx := s.KeyRecords().SearchIndex(func (kr *query.KeyRecord) bool {
+			// 		return krs[i].Key().Uint64() == kr.Key().Uint64()
+			// 	})
+
+			// }
+			var (
+				found_idx int    = -1
+				last      uint64 = uint64(0)
+			)
+
+			skip_idxs := []int{}
+			for idx, _ := range krs {
+				found_idx = s.KeyRecords().SearchIndex(func(kr *query.KeyRecord) bool {
+					return last < kr.Key().Uint64() &&
+						krs[idx].Key().Uint64() == kr.Key().Uint64()
+				})
+				if found_idx >= 0 {
+					skip_idxs = append(skip_idxs, found_idx)
+					kr := WithoutError(s.KeyRecords().At(found_idx))
+
+					recs := krs[idx].Records()
+					for _, rec := range kr.Records().All() {
+						recs.SetAt(recs.Count(), rec)
+					}
+					krs[idx].SetRecords(recs)
+				}
+
+			}
+
+		}
+
+		krs = append(krs, s.KeyRecords().All()...)
+	}
+
+	// dst.keyReocrds.SortBy(func(i, j int) bool {
+	// 	ikr := WithoutError(dst.keyReocrds.At(i))
+	// 	jkr := WithoutError(dst.keyReocrds.At(j))
+	// 	if ikr == nil || jkr == nil {
+	// 		return false
+	// 	}
+
+	// 	return ikr.Key().Uint64() < jkr.Key().Uint64()
+	// })
+
+	return nil, nil
 }
