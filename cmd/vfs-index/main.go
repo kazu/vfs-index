@@ -115,7 +115,7 @@ var Cmds = []Cmd{
 		Name:  "clean",
 		Usage: UsageSearch,
 		Flag:  flag.NewFlagSet("clean", flag.ExitOnError),
-		Fn:    search,
+		Fn:    clean,
 	},
 }
 

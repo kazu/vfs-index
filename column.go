@@ -565,15 +565,18 @@ func (c *Column) baseMergeIndex(w IdxWriter, ctx context.Context) error {
 	Log(LOG_DEBUG, "S: renamed %s -> %s \n", wIdxPath, path)
 
 	// remove merged file
+	cleanDirs := make([]string, 0, len(noMergeIdxFiles))
 	for _, f := range noMergeIdxFiles {
-		os.Remove(f.Path)
+		if e := os.Remove(f.Path); e != nil {
+			cleanDirs = append(cleanDirs, filepath.Dir(f.Path))
+		}
 	}
 
 	deferFn()
 
 	Log(LOG_DEBUG, "S: remove merged files count=%d \n", len(noMergeIdxFiles))
 	if Opt.cleanAfterMergeing {
-		c.cleanDirs()
+		c.cleanDirs(cleanDirs)
 	}
 	return nil
 }
@@ -608,11 +611,11 @@ func (c *Column) key2Path(key uint64, state byte) string {
 }
 
 func (c *Column) CleanDirs() (cnt int) {
-	return c.cleanDirs()
+	return c.cleanDirs(nil)
 }
 
-func (c *Column) cleanDirs() (cnt int) {
-	dirs := c.emptyDirs()
+func (c *Column) cleanDirs(idirs []string) (cnt int) {
+	dirs := c.emptyDirs(idirs)
 	cnt = len(dirs)
 	bar := Pbar.Add("clean empty dir", cnt)
 
@@ -622,22 +625,45 @@ func (c *Column) cleanDirs() (cnt int) {
 	}
 	bar.SetTotal(int64(cnt), true)
 	if cnt > 0 {
-		c.cleanDirs()
+		for i, dir := range dirs {
+			dirs[i] = filepath.Dir(dir)
+		}
+		c.cleanDirs(dirs)
 	}
 	return
 
 }
-func (c *Column) emptyDirs() []string {
+func (c *Column) emptyDirs(idirs []string) []string {
 
 	rDirs := []string{}
 	finder := OpenIndexFile(c)
 
 	bar := Pbar.Add("find empty dir", 100)
 
+	isFamily := func(path string) bool {
+		return loncha.Contain(&idirs, func(i int) bool {
+			if strings.Contains(path, idirs[i]) || strings.Contains(idirs[i], path) {
+				return true
+			}
+			return false
+		})
+	}
+
 	finder.Select(
 		OptAsc(true),
 		OptCcondFn(func(f *IndexFile) CondType {
+
 			if f.IsType(IdxFileType_Dir) {
+				if len(idirs) > 0 && !isFamily(f.Path) {
+					return CondFalse
+				}
+				defer func() {
+					bar.Increment()
+					if bar.Current() >= 80 {
+						bar.SetTotal(bar.Current()*2, false)
+					}
+				}()
+
 				if names, _ := readDirNames(f.Path); len(names) == 0 {
 					//					fmt.Fprintf(os.Stderr, "found empty %s\n", f.Path)
 					return CondTrue
@@ -650,14 +676,10 @@ func (c *Column) emptyDirs() []string {
 		OptTraverse(func(f *IndexFile) error {
 			//			fmt.Fprintf(os.Stderr, "found empty %s\n", f.Path)
 			rDirs = append(rDirs, f.Path)
-			bar.Increment()
-			if len(rDirs)/2 < int(bar.Current()) {
-				bar.SetTotal(int64(len(rDirs)*2), false)
-			}
 			return nil
 		}),
 	)
-	bar.SetTotal(int64(len(rDirs)), true)
+	bar.SetTotal(bar.Current(), true)
 	return rDirs
 }
 
