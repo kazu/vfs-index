@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -117,11 +118,17 @@ var Cmds = []Cmd{
 		Flag:  flag.NewFlagSet("clean", flag.ExitOnError),
 		Fn:    clean,
 	},
+	Cmd{
+		Name:  "cleantest",
+		Usage: UsageSearch,
+		Flag:  flag.NewFlagSet("cleantest", flag.ExitOnError),
+		Fn:    cleantest,
+	},
 }
 
 type CmdOpt struct {
-	indexDir, column, table, dir, query, output, info string
-	first, help, nomerge, qstdin, noclean             bool
+	name, indexDir, column, table, dir, query, output, info string
+	first, help, nomerge, qstdin, noclean                   bool
 }
 
 type Cmd struct {
@@ -156,7 +163,10 @@ func main() {
 	}
 
 	opt := CmdOpt{}
+	confdir := ""
 
+	cmd.Flag.StringVar(&confdir, "config", "", "configfile directory ")
+	cmd.Flag.StringVar(&opt.name, "name", "", "index name")
 	cmd.Flag.StringVar(&opt.indexDir, "index", "./vfs", "directory of index")
 	cmd.Flag.StringVar(&opt.column, "column", "id", "column name")
 	cmd.Flag.StringVar(&opt.table, "table", "table", "table name")
@@ -186,6 +196,40 @@ func main() {
 		fmt.Println(cmd.Usage)
 		return
 	}
+
+	if confdir == "" {
+		confdir, _ = os.UserHomeDir()
+		confdir = filepath.Join(confdir, ".vfx-index")
+	}
+	conf, err := vfs.LoadCmdConfig(confdir)
+	if err != nil {
+		confdir, _ = os.Getwd()
+		conf, err = vfs.LoadCmdConfig(confdir)
+	}
+	if err != nil {
+		conf = &vfs.ConfigFile{}
+		conf.Name2Index = map[string]*vfs.ConfigIndex{}
+		conf.Name2Index[opt.name] = &vfs.ConfigIndex{}
+	}
+
+	if opt.indexDir == "./vfs" {
+		opt.indexDir = conf.Name2Index[opt.name].IndexDir
+	} else {
+		conf.Name2Index[opt.name].IndexDir = opt.indexDir
+	}
+
+	if opt.table == "table" {
+		opt.table = conf.Name2Index[opt.name].Table
+	} else {
+		conf.Name2Index[opt.name].Table = opt.table
+	}
+
+	if opt.dir == "./" {
+		opt.dir = conf.Name2Index[opt.name].Dir
+	} else {
+		conf.Name2Index[opt.name].Dir = opt.dir
+	}
+	vfs.SaveCmdConfig(confdir, conf)
 
 	cmd.Fn(opt)
 
@@ -280,6 +324,18 @@ func clean(opt CmdOpt) {
 	}
 	f := sCond.IndexFile()
 	f.Column().CleanDirs()
+	return
+}
+
+func cleantest(opt CmdOpt) {
+	sCond, e := setup_command(opt)
+
+	if e != nil || sCond == nil {
+		fmt.Printf("E: Open(%s) fail errpr=%s\n", opt.dir, e)
+		return
+	}
+	f := sCond.IndexFile()
+	f.Column().CleanDirTest(1)
 	return
 }
 

@@ -614,6 +614,19 @@ func (c *Column) CleanDirs() (cnt int) {
 	return c.cleanDirs(nil)
 }
 
+func (c *Column) CleanDirTest(mode int) {
+
+	cdir := make([]string, 0, 1)
+
+	if mode == 1 {
+		cdir = append(cdir, "/Users/xtakei/git/cmd/tmp/vfs/mac/0029")
+	}
+	if ocdir := c.emptyDirs(cdir); ocdir != nil && len(ocdir) > 0 {
+		fmt.Printf("dir=%s\n", ocdir[0])
+	}
+	return
+}
+
 func (c *Column) cleanDirs(idirs []string) (cnt int) {
 	dirs := c.emptyDirs(idirs)
 	cnt = len(dirs)
@@ -668,7 +681,6 @@ func (c *Column) emptyDirs(idirs []string) []string {
 					//					fmt.Fprintf(os.Stderr, "found empty %s\n", f.Path)
 					return CondTrue
 				}
-				//				fmt.Fprintf(os.Stderr, "to depth %s\n", f.Path)
 				return CondLazy
 			}
 			return CondFalse

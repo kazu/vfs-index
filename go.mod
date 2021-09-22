@@ -3,6 +3,7 @@ module github.com/kazu/vfs-index
 go 1.14
 
 require (
+	github.com/BurntSushi/toml v0.3.1
 	github.com/Nr90/imgsim v0.0.0-20180202144352-5caa057144b0
 	github.com/cheekybits/genny v1.0.0
 	github.com/davecgh/go-spew v1.1.1

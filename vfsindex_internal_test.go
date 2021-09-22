@@ -565,8 +565,8 @@ func Test_IndexFile_cleanDirs(t *testing.T) {
 
 	c := sCond.Column()
 
-	c.cleanDirs()
-	dirs := c.emptyDirs()
+	c.cleanDirs(nil)
+	dirs := c.emptyDirs(nil)
 
 	assert.True(t, len(dirs) == 0)
 }
