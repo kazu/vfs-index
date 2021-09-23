@@ -1,3 +1,4 @@
+github.com/BurntSushi/toml v0.3.1 h1:WXkYYl6Yr3qBf1K79EBnL4mak0OimBfB0XUf9Vl28OQ=
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
 github.com/Nr90/imgsim v0.0.0-20180202144352-5caa057144b0 h1:8cjsGKoi/1QBb0V2ps3iBra9c4o+qY/NaJ15NsdjmQ4=
 github.com/Nr90/imgsim v0.0.0-20180202144352-5caa057144b0/go.mod h1:PSWPVD+KeWK3XVt0i/AahAMRw38OZ1k1vJpJLuvIY1w=
