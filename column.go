@@ -619,6 +619,7 @@ func (c *Column) CleanDirTest(mode int) {
 	cdir := make([]string, 0, 1)
 
 	if mode == 1 {
+		//cdir = append(cdir, "/Users/xtakei/git/cmd/tmp/vfs/mac/0029/3002/ff5e")
 		cdir = append(cdir, "/Users/xtakei/git/cmd/tmp/vfs/mac/0029")
 	}
 	if ocdir := c.emptyDirs(cdir); ocdir != nil && len(ocdir) > 0 {
@@ -646,6 +647,44 @@ func (c *Column) cleanDirs(idirs []string) (cnt int) {
 	return
 
 }
+
+type ParentDirs struct {
+	m   map[string]bool
+	min int
+}
+
+func NewParentDirs(base string, dirs []string) (pdirs ParentDirs) {
+
+	allparent := func(odir string) (dirs []string) {
+
+		dir := odir
+		for true {
+			dirs = append(dirs, dir)
+			dir = filepath.Dir(dir)
+			if base == filepath.Dir(dir) || len(base) >= len(filepath.Dir(dir)) {
+				break
+			}
+		}
+		return
+	}
+	_ = allparent
+	pdirs = ParentDirs{m: map[string]bool{}, min: 100}
+
+	for _, dir := range dirs {
+		if len(dir) == 0 {
+			continue
+		}
+		for _, pdir := range allparent(dir) {
+			pdirs.m[pdir] = true
+		}
+	}
+	return
+}
+
+func (pdir ParentDirs) Has(dir string) bool {
+	return pdir.m[dir]
+}
+
 func (c *Column) emptyDirs(idirs []string) []string {
 
 	rDirs := []string{}
@@ -661,21 +700,29 @@ func (c *Column) emptyDirs(idirs []string) []string {
 			return false
 		})
 	}
+	_ = isFamily
+	parents := NewParentDirs(finder.Path, idirs)
+	_ = parents
 
 	finder.Select(
 		OptAsc(true),
 		OptCcondFn(func(f *IndexFile) CondType {
 
 			if f.IsType(IdxFileType_Dir) {
-				if len(idirs) > 0 && !isFamily(f.Path) {
-					return CondFalse
-				}
 				defer func() {
 					bar.Increment()
 					if bar.Current() >= 80 {
 						bar.SetTotal(bar.Current()*2, false)
 					}
 				}()
+				if f.Path == finder.Path {
+					return CondLazy
+				}
+
+				if len(idirs) > 0 && !parents.Has(f.Path) {
+					return CondFalse
+				}
+				parents.m[f.Path] = true
 
 				if names, _ := readDirNames(f.Path); len(names) == 0 {
 					//					fmt.Fprintf(os.Stderr, "found empty %s\n", f.Path)
