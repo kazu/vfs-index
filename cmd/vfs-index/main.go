@@ -139,6 +139,69 @@ type Cmd struct {
 	Validate func(CmdOpt) bool
 }
 
+func loadConfigfile(odir string, cparam *CmdOpt) *vfs.ConfigFile {
+	confdir := odir
+
+	var conf *vfs.ConfigFile
+	var err error
+
+	stringNoError := func(s string, e error) string {
+		return s
+	}
+
+	if confdir == "" {
+		confdir, _ = os.UserHomeDir()
+		confdir = filepath.Join(confdir, ".vfx-index")
+		goto LOAD_FILE
+	}
+
+CONF_PWD:
+
+	confdir, _ = os.Getwd()
+
+LOAD_FILE:
+	if conf, err = vfs.LoadCmdConfig(confdir); err == nil {
+		goto ENSURE
+	}
+
+	if confdir == stringNoError(os.UserHomeDir()) {
+		goto CONF_PWD
+	}
+
+	conf = &vfs.ConfigFile{}
+	conf.Name2Index = map[string]*vfs.ConfigIndex{}
+	conf.Name2Index[cparam.name] = &vfs.ConfigIndex{}
+
+	conf.Name2Index[cparam.name].IndexDir = cparam.indexDir
+	conf.Name2Index[cparam.name].Table = cparam.table
+	conf.Name2Index[cparam.name].Dir = cparam.dir
+
+ENSURE:
+
+	if conf.Name2Index[cparam.name] == nil {
+		for k, _ := range conf.Name2Index {
+			cparam.name = k
+		}
+	}
+	if cparam.indexDir == "./vfs" {
+		cparam.indexDir = conf.Name2Index[cparam.name].IndexDir
+	}
+
+	if cparam.table == "table" {
+		cparam.table = conf.Name2Index[cparam.name].Table
+	}
+
+	if cparam.dir == "./" {
+		cparam.dir = conf.Name2Index[cparam.name].Dir
+	}
+	conf.Name2Index[cparam.name].IndexDir = cparam.indexDir
+	conf.Name2Index[cparam.name].Table = cparam.table
+	conf.Name2Index[cparam.name].Dir = cparam.dir
+
+	return conf
+
+}
+
 func main() {
 
 	if len(os.Args) < 2 {
@@ -196,39 +259,8 @@ func main() {
 		fmt.Println(cmd.Usage)
 		return
 	}
+	conf := loadConfigfile(confdir, &opt)
 
-	if confdir == "" {
-		confdir, _ = os.UserHomeDir()
-		confdir = filepath.Join(confdir, ".vfx-index")
-	}
-	conf, err := vfs.LoadCmdConfig(confdir)
-	if err != nil {
-		confdir, _ = os.Getwd()
-		conf, err = vfs.LoadCmdConfig(confdir)
-	}
-	if err != nil {
-		conf = &vfs.ConfigFile{}
-		conf.Name2Index = map[string]*vfs.ConfigIndex{}
-		conf.Name2Index[opt.name] = &vfs.ConfigIndex{}
-	}
-
-	if opt.indexDir == "./vfs" {
-		opt.indexDir = conf.Name2Index[opt.name].IndexDir
-	} else {
-		conf.Name2Index[opt.name].IndexDir = opt.indexDir
-	}
-
-	if opt.table == "table" {
-		opt.table = conf.Name2Index[opt.name].Table
-	} else {
-		conf.Name2Index[opt.name].Table = opt.table
-	}
-
-	if opt.dir == "./" {
-		opt.dir = conf.Name2Index[opt.name].Dir
-	} else {
-		conf.Name2Index[opt.name].Dir = opt.dir
-	}
 	vfs.SaveCmdConfig(confdir, conf)
 
 	cmd.Fn(opt)
