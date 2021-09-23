@@ -32,63 +32,6 @@ type IndexFile struct {
 	c     *Column
 }
 
-func OpenIndexFile(c *Column) (idxFile *IndexFile) {
-
-	path := filepath.Join(Opt.rootDir, c.TableDir())
-
-	idxFile = NewIndexFile(c, path)
-	idxFile.Ftype = IdxFileType_Dir
-	c.IsNum = c.validateIndexType()
-	return
-}
-
-func NewIndexFile(c *Column, path string) *IndexFile {
-	return &IndexFile{
-		Path: path,
-		c:    c,
-	}
-}
-func (f IndexFile) Column() *Column {
-	return f.c
-}
-
-func (f *IndexFile) IsType(t IndexFileType) bool {
-	return f.Ftype&t > 0
-}
-func (f *IndexFile) Init() {
-
-	info, e := os.Stat(f.Path)
-	if e == nil && info.IsDir() {
-		f.Ftype = IdxFileType_Dir
-		return
-	}
-
-	vlabel := func() string {
-		if f.c.IsNum {
-			return "num"
-		}
-		return "gram"
-	}
-	a := fmt.Sprintf("%s.%s.idx", f.c.Name, vlabel())
-	_ = a
-
-	strs := strings.Split(filepath.Base(f.Path), fmt.Sprintf("%s.%s.idx", f.c.Name, vlabel()))
-	if len(strs) < 2 {
-		f.Ftype = IdxFileType_None
-		return
-	}
-
-	if strs := strings.Split(filepath.Base(f.Path), ".merged."); len(strs) > 1 {
-		f.Ftype = IdxFileType_Merge
-	} else if strs := strings.Split(filepath.Base(f.Path), ".merging."); len(strs) > 1 {
-		f.Ftype = IdxFileType_Merge | IdxFileType_NoComplete
-	} else if strs := strings.Split(filepath.Base(f.Path), ".adding."); len(strs) > 1 {
-		f.Ftype = IdxFileType_Write | IdxFileType_NoComplete
-	} else if strs := strings.Split(filepath.Base(f.Path), filepath.Base(f.c.Path())); len(strs) > 1 {
-		f.Ftype = IdxFileType_Write
-	}
-}
-
 type SelectOpt struct {
 	asc         bool
 	cond        CondFn
@@ -102,6 +45,17 @@ type SelectOption func(*SelectOpt)
 type CondType byte
 type TraverseFn func(f *IndexFile) error
 type CondFn func(f *IndexFile) CondType
+
+type ResultFn func(SkipFn)
+type InfoFn func(RecordInfoArg)
+
+type RecordInfoArg struct {
+	isKeyRecord bool
+	rec         *query.InvertedMapNum
+	kr          *query.KeyRecord
+	sCur        int
+	krSfn       SkipFn
+}
 
 const (
 	CondTrue CondType = iota
@@ -141,6 +95,80 @@ func (opt *SelectOpt) Merge(opts []SelectOption) {
 		opts[i](opt)
 	}
 }
+
+func LessEqString(s, d string) (isLess bool) {
+
+	defer func() {
+		if isLess {
+			Log(LOG_DEBUG, "%s < %s == %v\n", s, d, isLess)
+		} else {
+			//Log(LOG_DEBUG, "%s < %s == %v\n", s, d, isLess)
+		}
+	}()
+	limit := len(s)
+	if len(s) > len(d) {
+		limit = len(d)
+	}
+	for k := 0; k < limit; k++ {
+		if []rune(s)[k] == []rune(d)[k] {
+			continue
+		}
+		return []rune(s)[k] <= []rune(d)[k]
+	}
+
+	return true
+}
+
+func sortAlphabet(names []string) []string {
+	sort.Slice(names, func(i, j int) bool {
+		if len(names[i]) == len(names[j]) {
+			for k := 0; k < len(names[i]); k++ {
+				if []rune(names[i])[k] == []rune(names[j])[k] {
+					continue
+				}
+				return []rune(names[i])[k] < []rune(names[j])[k]
+			}
+		}
+		return names[i] < names[j]
+
+	})
+	return names
+}
+
+//   copy this file from file/filepath package
+// readDirNames reads the directory named by dirname and returns
+// a sorted list of directory entries.
+func readDirNames(dirname string) ([]string, error) {
+	f, err := os.Open(dirname)
+	if err != nil {
+		return nil, err
+	}
+	names, err := f.Readdirnames(-1)
+	f.Close()
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(names)
+	return names, nil
+}
+
+func OpenIndexFile(c *Column) (idxFile *IndexFile) {
+
+	path := filepath.Join(Opt.rootDir, c.TableDir())
+
+	idxFile = NewIndexFile(c, path)
+	idxFile.Ftype = IdxFileType_Dir
+	c.IsNum = c.validateIndexType()
+	return
+}
+
+func NewIndexFile(c *Column, path string) *IndexFile {
+	return &IndexFile{
+		Path: path,
+		c:    c,
+	}
+}
+
 func ListMergedIndex(c *Column, fn CondFn, opts ...SelectOption) (result []*IndexFile) {
 
 	OpenIndexFile(c).Select(
@@ -152,6 +180,47 @@ func ListMergedIndex(c *Column, fn CondFn, opts ...SelectOption) (result []*Inde
 		}),
 	)
 	return
+}
+
+func (f IndexFile) Column() *Column {
+	return f.c
+}
+
+func (f *IndexFile) IsType(t IndexFileType) bool {
+	return f.Ftype&t > 0
+}
+func (f *IndexFile) Init() {
+
+	info, e := os.Stat(f.Path)
+	if e == nil && info.IsDir() {
+		f.Ftype = IdxFileType_Dir
+		return
+	}
+
+	vlabel := func() string {
+		if f.c.IsNum {
+			return "num"
+		}
+		return "gram"
+	}
+	a := fmt.Sprintf("%s.%s.idx", f.c.Name, vlabel())
+	_ = a
+
+	strs := strings.Split(filepath.Base(f.Path), fmt.Sprintf("%s.%s.idx", f.c.Name, vlabel()))
+	if len(strs) < 2 {
+		f.Ftype = IdxFileType_None
+		return
+	}
+
+	if strs := strings.Split(filepath.Base(f.Path), ".merged."); len(strs) > 1 {
+		f.Ftype = IdxFileType_Merge
+	} else if strs := strings.Split(filepath.Base(f.Path), ".merging."); len(strs) > 1 {
+		f.Ftype = IdxFileType_Merge | IdxFileType_NoComplete
+	} else if strs := strings.Split(filepath.Base(f.Path), ".adding."); len(strs) > 1 {
+		f.Ftype = IdxFileType_Write | IdxFileType_NoComplete
+	} else if strs := strings.Split(filepath.Base(f.Path), filepath.Base(f.c.Path())); len(strs) > 1 {
+		f.Ftype = IdxFileType_Write
+	}
 }
 
 func (f *IndexFile) Select(opts ...SelectOption) (err error) {
@@ -261,45 +330,6 @@ func (f *IndexFile) First() *IndexFile {
 		}
 	}
 	return nil
-}
-
-func LessEqString(s, d string) (isLess bool) {
-
-	defer func() {
-		if isLess {
-			Log(LOG_DEBUG, "%s < %s == %v\n", s, d, isLess)
-		} else {
-			//Log(LOG_DEBUG, "%s < %s == %v\n", s, d, isLess)
-		}
-	}()
-	limit := len(s)
-	if len(s) > len(d) {
-		limit = len(d)
-	}
-	for k := 0; k < limit; k++ {
-		if []rune(s)[k] == []rune(d)[k] {
-			continue
-		}
-		return []rune(s)[k] <= []rune(d)[k]
-	}
-
-	return true
-}
-
-func sortAlphabet(names []string) []string {
-	sort.Slice(names, func(i, j int) bool {
-		if len(names[i]) == len(names[j]) {
-			for k := 0; k < len(names[i]); k++ {
-				if []rune(names[i])[k] == []rune(names[j])[k] {
-					continue
-				}
-				return []rune(names[i])[k] < []rune(names[j])[k]
-			}
-		}
-		return names[i] < names[j]
-
-	})
-	return names
 }
 
 // First ... Find first IndexFile.
@@ -423,31 +453,6 @@ func (f *IndexFile) LastRecord() *Record {
 	}
 }
 
-//   copy this file from file/filepath package
-// readDirNames reads the directory named by dirname and returns
-// a sorted list of directory entries.
-func readDirNames(dirname string) ([]string, error) {
-	f, err := os.Open(dirname)
-	if err != nil {
-		return nil, err
-	}
-	names, err := f.Readdirnames(-1)
-	f.Close()
-	if err != nil {
-		return nil, err
-	}
-	sort.Strings(names)
-	return names, nil
-}
-
-type RecordInfoArg struct {
-	isKeyRecord bool
-	rec         *query.InvertedMapNum
-	kr          *query.KeyRecord
-	sCur        int
-	krSfn       SkipFn
-}
-
 // RecordByKey ... return function getting splice of query.Record
 // Deprecated: RecordByKey
 //   should use recordByKey
@@ -501,9 +506,6 @@ func (f *IndexFile) countBy(key uint64) (cnt int) {
 	})(EmptySkip)
 	return cnt
 }
-
-type ResultFn func(SkipFn)
-type InfoFn func(RecordInfoArg)
 
 func (f *IndexFile) recordInfoByKey(key uint64, fn InfoFn) ResultFn {
 
@@ -970,4 +972,26 @@ func (l *IndexFile) middleFile(d, h *IndexFile) *IndexFile {
 	_ = hidx
 	idx := (lidx + hidx) / 2
 	return files[idx]
+}
+
+func (l *IndexFile) removeWithParent(finder *IndexFile) (require_clean bool, e error) {
+	require_clean = false
+
+	if e = os.Remove(l.Path); e != nil {
+		require_clean = true
+		return
+	}
+	path := l.Path
+	for {
+		path = filepath.Dir(path)
+		if path == finder.Path {
+			return
+		}
+		if e = os.Remove(path); e != nil {
+			return
+		}
+
+	}
+
+	return
 }
