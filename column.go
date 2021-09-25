@@ -567,15 +567,20 @@ func (c *Column) baseMergeIndex(w IdxWriter, ctx context.Context) error {
 	// remove merged file
 	cleanDirs := make([]string, 0, len(noMergeIdxFiles))
 	for _, f := range noMergeIdxFiles {
-		if e := os.Remove(f.Path); e != nil {
-			cleanDirs = append(cleanDirs, filepath.Dir(f.Path))
+		if req, e := f.removeWithParent(finder); e != nil || req {
+			if e != nil && req {
+				Log(LOG_WARN, "F:mergeIndex() cannot remove merged index... %s\n", wIdxPath)
+			}
+			if req {
+				cleanDirs = append(cleanDirs, filepath.Dir(f.Path))
+			}
 		}
 	}
 
 	deferFn()
 
 	Log(LOG_DEBUG, "S: remove merged files count=%d \n", len(noMergeIdxFiles))
-	if Opt.cleanAfterMergeing {
+	if Opt.cleanAfterMergeing && len(cleanDirs) > 0 {
 		c.cleanDirs(cleanDirs)
 	}
 	return nil
