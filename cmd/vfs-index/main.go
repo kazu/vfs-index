@@ -24,6 +24,7 @@ Available Commands:
 	merge		merge index (only 1 minute)
 	info        infomation of index file
 	clean       clean index directory
+	config      read/write configuration
 
 Flags:
 	-h,-help    help for vfs-index
@@ -32,9 +33,10 @@ Flags:
 const UsageIndex string = `create index
 
 Usage:
-	vfs-index index
+	vfs-index index [Flags]
 
 Flags:	
+	-name       configration name
 	-index  	directory for index data
 	-column		column name for index  
 	-table		table name for index. prefix name in data file
@@ -45,9 +47,10 @@ Flags:
 const UsageSearch string = `Search index
 
 Usage:
-	vfs-index search
+	vfs-index search [Flags]
 
 Flags:	
+	-name       configration name
 	-index  	directory for index data
 	-column		column name for index  
 	-table		table name for index. prefix name in data file
@@ -64,9 +67,10 @@ Flags:
 const UsageMerge string = `Merge splited index file
 
 Usage:
-	vfs-index merge
+	vfs-index merge [Flags]
 
-Flags:	
+Flags:
+	-name       configration name
 	-index  	directory for index data
 	-column		column name for index  
 	-table		table name for index. prefix name in data file
@@ -76,15 +80,32 @@ Flags:
 const UsageInfo string = `get information index files
 
 Usage:
-	vfs-index info
+	vfs-index info [Flags]
 
 Flags:	
+	-name       configration name
 	-index  	directory for index data
 	-column		column name for index  
 	-table		table name for index. prefix name in data file
 	-data		data directory
 	-info       indexfile
 	-h,-help    help for merge
+
+	
+`
+
+const UsageConfig string = `read/write vfx-index config
+
+Usage:
+	vfs-index config [Flags]
+
+Flags:
+   -l,-list	   list all configraution parameters
+   -r,-read    read parameter
+   -w,-write   update parameter
+   -h,-help    help for config
+
+	
 `
 
 var Cmds = []Cmd{
@@ -124,11 +145,18 @@ var Cmds = []Cmd{
 		Flag:  flag.NewFlagSet("cleantest", flag.ExitOnError),
 		Fn:    cleantest,
 	},
+	Cmd{
+		Name:  "config",
+		Usage: UsageConfig,
+		Flag:  flag.NewFlagSet("config", flag.ExitOnError),
+		Fn:    config,
+	},
 }
 
 type CmdOpt struct {
-	name, indexDir, column, table, dir, query, output, info string
-	first, help, nomerge, qstdin, noclean                   bool
+	name, indexDir, column, table, dir, query, output, info, value string
+	first, help, nomerge, qstdin, noclean, list, read, write       bool
+	config                                                         *vfs.ConfigFile
 }
 
 type Cmd struct {
@@ -253,17 +281,28 @@ func main() {
 	cmd.Flag.BoolVar(&opt.help, "help", false, "help")
 	cmd.Flag.BoolVar(&opt.help, "h", false, "help (shorthand)")
 
+	cmd.Flag.BoolVar(&opt.list, "list", false, "list configuration")
+	cmd.Flag.BoolVar(&opt.list, "l", false, "list (shorthand)")
+
+	cmd.Flag.BoolVar(&opt.read, "read", false, "read configration params")
+	cmd.Flag.BoolVar(&opt.read, "r", false, "read (shorthand)")
+
+	cmd.Flag.BoolVar(&opt.write, "write", false, "write/update configuration params name")
+	cmd.Flag.BoolVar(&opt.write, "w", false, "write (shorthand)")
+
+	cmd.Flag.StringVar(&opt.value, "value", "", "write/update configuration params value")
+	cmd.Flag.StringVar(&opt.value, "v", "", "value (shorthand)")
+
 	cmd.Flag.Parse(os.Args[2:])
 
 	if !validate(os.Args, opt) {
 		fmt.Println(cmd.Usage)
 		return
 	}
-	conf := loadConfigfile(confdir, &opt)
-
-	vfs.SaveCmdConfig(confdir, conf)
+	opt.config = loadConfigfile(confdir, &opt)
 
 	cmd.Fn(opt)
+	vfs.SaveCmdConfig(confdir, opt.config)
 
 	return
 }
@@ -371,6 +410,72 @@ func cleantest(opt CmdOpt) {
 	return
 }
 
+func config(opt CmdOpt) {
+	if !opt.list && !opt.read && !opt.write {
+		opt.list = true
+	}
+
+	list_all_config := func(opt CmdOpt) {
+		for k, v := range opt.config.Name2Index {
+			fmt.Printf("%s.IndexDir=%s\n", k, v.IndexDir)
+			fmt.Printf("%s.Table=%s\n", k, v.Table)
+			fmt.Printf("%s.Dir=%s\n", k, v.Dir)
+		}
+	}
+
+	if opt.list {
+		list_all_config(opt)
+		return
+	}
+	if opt.read {
+		args := strings.Split(opt.value, ".")
+		if args == nil || len(args) < 2 {
+			return
+		}
+		k := args[0]
+		p := args[1]
+		if opt.config.Name2Index[k] == nil {
+			return
+		}
+
+		switch p {
+		case "IndexDir":
+			fmt.Printf("%s\n", opt.config.Name2Index[k].IndexDir)
+		case "Table":
+			fmt.Printf("%s\n", opt.config.Name2Index[k].Table)
+		case "Dir":
+			fmt.Printf("%s\n", opt.config.Name2Index[k].Dir)
+		}
+
+		return
+	}
+
+	if opt.write {
+		args := strings.Split(opt.value, ".")
+		if args == nil || len(args) < 2 {
+			return
+		}
+		k := args[0]
+		args2 := strings.Split(args[1], "=")
+		if args2 == nil || len(args2) < 2 {
+			return
+		}
+		p := args2[0]
+		v := args2[1]
+		switch p {
+		case "IndexDir":
+			opt.config.Name2Index[k].IndexDir = v
+		case "Table":
+			opt.config.Name2Index[k].Table = v
+		case "Dir":
+			opt.config.Name2Index[k].Dir = v
+		}
+		list_all_config(opt)
+
+	}
+
+}
+
 func validate(cmdArtgs []string, opt CmdOpt) bool {
 	if opt.help || len(cmdArtgs) < 3 {
 		//fmt.Println(UsageSearch)
@@ -379,9 +484,10 @@ func validate(cmdArtgs []string, opt CmdOpt) bool {
 	return true
 }
 
-func prepare_search(opt CmdOpt) {
+func prepare_search(opt *CmdOpt) {
 	if opt.qstdin {
 		line, _, _ := bufio.NewReader(os.Stdin).ReadLine()
+
 		if strs := strings.Fields(string(line)); len(strs) > 0 {
 			for i, str := range strs {
 				nstr := fmt.Sprintf("%s.search(\"%s\")", opt.column, str)
@@ -399,7 +505,7 @@ func prepare_search(opt CmdOpt) {
 }
 
 func search(opt CmdOpt) {
-	prepare_search(opt)
+	prepare_search(&opt)
 
 	//vfs.CurrentLogLoevel = vfs.LOG_DEBUG
 	vfs.CurrentLogLoevel = vfs.LOG_ERROR
@@ -408,7 +514,7 @@ func search(opt CmdOpt) {
 	vfs.LogWriter = &b
 
 	if len(opt.query) == 0 {
-		fmt.Fprint(os.Stderr, "Search: query is empty\n")
+		fmt.Fprintf(os.Stderr, "Search: query is empty opt=%+v\n", opt)
 		return
 	}
 
