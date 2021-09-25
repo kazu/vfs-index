@@ -569,7 +569,7 @@ func (c *Column) baseMergeIndex(w IdxWriter, ctx context.Context) error {
 	for _, f := range noMergeIdxFiles {
 		if req, e := f.removeWithParent(finder); e != nil || req {
 			if e != nil && req {
-				Log(LOG_WARN, "F:mergeIndex() cannot remove merged index... %s\n", wIdxPath)
+				Log(LOG_WARN, "F:mergeIndex() cannot remove merged index %s error=%s \n", wIdxPath, e.Error())
 			}
 			if req {
 				cleanDirs = append(cleanDirs, filepath.Dir(f.Path))

@@ -988,10 +988,11 @@ func (l *IndexFile) removeWithParent(finder *IndexFile) (require_clean bool, e e
 			return
 		}
 		if e = os.Remove(path); e != nil {
+			require_clean = true
+			//e = fmt.Errorf("cannot remove file %s error=%s", path, e.Error())
+			e = nil
 			return
 		}
 
 	}
-
-	return
 }
