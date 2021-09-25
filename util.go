@@ -223,7 +223,7 @@ func GetDecoder(fname string) (dec Decoder, e error) {
 	cidx, e := loncha.IndexOf(Opt.customDecoders, func(i int) bool {
 		return Opt.customDecoders[i].FileType == ext
 	})
-	if e == nil {
+	if e == nil && cidx >= 0 {
 		return Opt.customDecoders[cidx], nil
 	}
 

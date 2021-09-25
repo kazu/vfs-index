@@ -517,6 +517,23 @@ func Test_IndexFile_Select2(t *testing.T) {
 	assert.True(t, len(val) > 0)
 	assert.Equal(t, "北朝鮮による日本人拉致問題", val)
 }
+func Test_GetDecoder(t *testing.T) {
+	dec, e := GetDecoder("test.1.csv")
+
+	assert.NoError(t, e)
+	assert.Equal(t, "csv", dec.FileType)
+
+	dec, e = GetDecoder("test.1.json")
+
+	assert.NoError(t, e)
+	assert.Equal(t, "json", dec.FileType)
+
+	dec, e = GetDecoder("test.1.json.lz4")
+
+	assert.NoError(t, e)
+	assert.Equal(t, "json", dec.FileType)
+
+}
 
 func Test_Parse_CSV(t *testing.T) {
 	setup()
