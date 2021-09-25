@@ -237,7 +237,7 @@ func GetDecoder(fname string) (dec Decoder, e error) {
 	return DefaultDecoder[idx], nil
 
 }
-func setDecuoder(ext string, dec Decoder) (e error) {
+func setDecoder(ext string, dec Decoder) (e error) {
 	if len(ext) < 1 {
 		return ErrParameterInvalid
 	}

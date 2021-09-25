@@ -113,7 +113,7 @@ func (idx *Indexer) setCsvDecoder() {
 
 	var csvHeaders []string
 
-	setDecuoder("csv",
+	setDecoder("csv",
 		Decoder{
 			FileType: "csv",
 			Encoder: func(ov interface{}) ([]byte, error) {
