@@ -424,6 +424,22 @@ func (c *Column) baseMergeIndex(w IdxWriter, ctx context.Context) error {
 
 	i := 0
 
+	findKr := func(l *query.KeyRecordList, kr *query.InvertedMapNum) int {
+		if l.Count() == 0 {
+			return -1
+		}
+		lastMergedKr, e := l.Last()
+		if e != nil {
+			return -1
+		}
+		if lastMergedKr.Key().Uint64() != kr.Key().Uint64() {
+			return -1
+		}
+		return l.Count() - 1
+
+	}
+	_ = findKr
+
 	finder.Select(
 		OptAsc(true),
 		OptCcondFn(func(f *IndexFile) CondType {
@@ -465,33 +481,37 @@ func (c *Column) baseMergeIndex(w IdxWriter, ctx context.Context) error {
 
 			addRecs := query.NewRecordList()
 			addRecs.Base = base.NewNoLayer(addRecs.Base)
-			for i, matchKr := range mergedKeyRecords.All() {
-				if matchKr.Key().Uint64() == kr.Key().Uint64() {
-					addedKeyRecord.SetKey(query.FromUint64(kr.Key().Uint64()))
 
-					recDump := func(r *query.Record) string {
-						return fmt.Sprintf("FileId=%+v Offset=%+v",
-							r.FileId().Uint64(), r.Offset().Int64())
-					}
-					fmt.Printf("add key=%d(%s) %s\n", kr.Key().Uint64(), DecodeTri(kr.Key().Uint64()), recDump(kr.Value()))
-					addRecs = matchKr.Records()
-					addRecs.SetAt(matchKr.Records().Count(), kr.Value())
-					addRecs.Flatten()
-					addedKeyRecord.SetRecords(addRecs)
-					mergedKeyRecords.SetAt(i, addedKeyRecord)
+			var matchKr *query.KeyRecord
+			var matchError error
+			matchIdx := findKr(mergedKeyRecords, kr)
 
-					goto ADDED
-				}
-
+			if matchIdx < 0 {
+				goto ADD
 			}
 
+			addedKeyRecord.SetKey(query.FromUint64(kr.Key().Uint64()))
+			matchKr, matchError = mergedKeyRecords.At(matchIdx)
+
+			if matchError != nil {
+				Log(LOG_ERROR, "invalid data(index is exsitst. but record not found) ")
+				goto ADD
+			}
+
+			addRecs = matchKr.Records()
+			addRecs.SetAt(matchKr.Records().Count(), kr.Value())
+			addRecs.Flatten()
+			addedKeyRecord.SetRecords(addRecs)
+			mergedKeyRecords.SetAt(matchIdx, addedKeyRecord)
+			goto ENSURE
+
+		ADD:
 			addedKeyRecord.SetKey(query.FromUint64(kr.Key().Uint64()))
 			addRecs.SetAt(0, kr.Value())
 			addedKeyRecord.SetRecords(addRecs)
 			mergedKeyRecords.SetAt(mergedKeyRecords.Count(), addedKeyRecord)
 
-		ADDED:
-
+		ENSURE:
 			select {
 			case <-ctx.Done():
 				Log(LOG_WARN, "mergeIndex cancel() last_merge=%s\n", f.Path)

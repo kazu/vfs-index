@@ -13,7 +13,7 @@ require (
 	github.com/google/flatbuffers v1.12.0
 	github.com/h2non/filetype v1.1.0
 	github.com/jszwec/csvutil v1.3.0
-	github.com/kazu/fbshelper v0.1.5
+	github.com/kazu/fbshelper v0.1.6
 	github.com/kazu/loncha v0.1.1
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646 // indirect
 	github.com/pierrec/lz4 v2.5.2+incompatible
@@ -22,4 +22,4 @@ require (
 	github.com/vbauerster/mpb/v5 v5.2.4
 )
 
-//replace github.com/kazu/fbshelper => ../fbshelper/
+replace github.com/kazu/fbshelper => ../fbshelper/

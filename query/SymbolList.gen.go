@@ -91,3 +91,15 @@ func (node SymbolList) Search(fn func(*Symbol) bool) *Symbol {
 
 	return result
 }
+
+func (node SymbolList) SearchIndex(fn func(*Symbol) bool) int {
+
+	i := (*base.List)(node.CommonNode).SearchIndex(int((*base.List)(node.CommonNode).VLen()), func(cm *CommonNode) bool {
+		return fn(&Symbol{CommonNode: cm})
+	})
+	if i < int((*base.List)(node.CommonNode).VLen()) {
+		return i
+	}
+
+	return -1
+}

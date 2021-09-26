@@ -91,3 +91,15 @@ func (node RecordList) Search(fn func(*Record) bool) *Record {
 
 	return result
 }
+
+func (node RecordList) SearchIndex(fn func(*Record) bool) int {
+
+	i := (*base.List)(node.CommonNode).SearchIndex(int((*base.List)(node.CommonNode).VLen()), func(cm *CommonNode) bool {
+		return fn(&Record{CommonNode: cm})
+	})
+	if i < int((*base.List)(node.CommonNode).VLen()) {
+		return i
+	}
+
+	return -1
+}

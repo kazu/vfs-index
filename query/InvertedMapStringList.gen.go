@@ -91,3 +91,15 @@ func (node InvertedMapStringList) Search(fn func(*InvertedMapString) bool) *Inve
 
 	return result
 }
+
+func (node InvertedMapStringList) SearchIndex(fn func(*InvertedMapString) bool) int {
+
+	i := (*base.List)(node.CommonNode).SearchIndex(int((*base.List)(node.CommonNode).VLen()), func(cm *CommonNode) bool {
+		return fn(&InvertedMapString{CommonNode: cm})
+	})
+	if i < int((*base.List)(node.CommonNode).VLen()) {
+		return i
+	}
+
+	return -1
+}

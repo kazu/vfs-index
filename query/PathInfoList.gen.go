@@ -91,3 +91,15 @@ func (node PathInfoList) Search(fn func(*PathInfo) bool) *PathInfo {
 
 	return result
 }
+
+func (node PathInfoList) SearchIndex(fn func(*PathInfo) bool) int {
+
+	i := (*base.List)(node.CommonNode).SearchIndex(int((*base.List)(node.CommonNode).VLen()), func(cm *CommonNode) bool {
+		return fn(&PathInfo{CommonNode: cm})
+	})
+	if i < int((*base.List)(node.CommonNode).VLen()) {
+		return i
+	}
+
+	return -1
+}

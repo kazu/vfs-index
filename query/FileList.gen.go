@@ -91,3 +91,15 @@ func (node FileList) Search(fn func(*File) bool) *File {
 
 	return result
 }
+
+func (node FileList) SearchIndex(fn func(*File) bool) int {
+
+	i := (*base.List)(node.CommonNode).SearchIndex(int((*base.List)(node.CommonNode).VLen()), func(cm *CommonNode) bool {
+		return fn(&File{CommonNode: cm})
+	})
+	if i < int((*base.List)(node.CommonNode).VLen()) {
+		return i
+	}
+
+	return -1
+}

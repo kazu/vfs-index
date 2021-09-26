@@ -91,3 +91,15 @@ func (node KeyRecordList) Search(fn func(*KeyRecord) bool) *KeyRecord {
 
 	return result
 }
+
+func (node KeyRecordList) SearchIndex(fn func(*KeyRecord) bool) int {
+
+	i := (*base.List)(node.CommonNode).SearchIndex(int((*base.List)(node.CommonNode).VLen()), func(cm *CommonNode) bool {
+		return fn(&KeyRecord{CommonNode: cm})
+	})
+	if i < int((*base.List)(node.CommonNode).VLen()) {
+		return i
+	}
+
+	return -1
+}

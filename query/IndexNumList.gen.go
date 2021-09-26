@@ -91,3 +91,15 @@ func (node IndexNumList) Search(fn func(*IndexNum) bool) *IndexNum {
 
 	return result
 }
+
+func (node IndexNumList) SearchIndex(fn func(*IndexNum) bool) int {
+
+	i := (*base.List)(node.CommonNode).SearchIndex(int((*base.List)(node.CommonNode).VLen()), func(cm *CommonNode) bool {
+		return fn(&IndexNum{CommonNode: cm})
+	})
+	if i < int((*base.List)(node.CommonNode).VLen()) {
+		return i
+	}
+
+	return -1
+}

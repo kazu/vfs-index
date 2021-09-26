@@ -91,3 +91,15 @@ func (node IdxEntryList) Search(fn func(*IdxEntry) bool) *IdxEntry {
 
 	return result
 }
+
+func (node IdxEntryList) SearchIndex(fn func(*IdxEntry) bool) int {
+
+	i := (*base.List)(node.CommonNode).SearchIndex(int((*base.List)(node.CommonNode).VLen()), func(cm *CommonNode) bool {
+		return fn(&IdxEntry{CommonNode: cm})
+	})
+	if i < int((*base.List)(node.CommonNode).VLen()) {
+		return i
+	}
+
+	return -1
+}
