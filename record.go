@@ -204,14 +204,24 @@ func (r *Record) write(c *Column, w IdxWriter) error {
 			Log(LOG_WARN, "F: create...%s err=%s\n", wPath, e)
 			return e
 		}
+		debugStr := ""
 		if c.IsNum {
 			io.Write(r.ToFbs(r.Uint64Value(c)))
+			if CurrentLogLoevel == LOG_DEBUG {
+				debugStr = fmt.Sprintf("%d", r.Uint64Value(c))
+			}
 		} else {
 			io.Write(r.ToFbs(TriKeys(r.StrValue(c))[i]))
-		}
+			if CurrentLogLoevel == LOG_DEBUG {
+				debugStr = fmt.Sprintf("%s(%s)",
+					DecodeTri(TriKeys(r.StrValue(c))[i]), r.StrValue(c))
 
+			}
+		}
 		io.Close()
-		Log(LOG_DEBUG, "S: written %s \n", wPath)
+		Log(LOG_DEBUG, "S: record(id=%v, %d) %s(%v)(%d)=%s  written %s \n", r.fileID, r.offset,
+			c.Name, TriKeys(r.StrValue(c))[i], i, debugStr,
+			wPath)
 		os.MkdirAll(filepath.Dir(path), os.ModePerm)
 		if w.IsNum && r.Uint64Value(c) == 0 {
 			//spew.Dump(r)
@@ -223,7 +233,7 @@ func (r *Record) write(c *Column, w IdxWriter) error {
 			Log(LOG_DEBUG, "F: rename %s -> %s \n", wPath, path)
 			return e
 		}
-		Log(LOG_DEBUG, "S: renamed%s -> %s \n", wPath, path)
+		Log(LOG_DEBUG, "S: renamed %s -> %s \n", wPath, path)
 
 	}
 

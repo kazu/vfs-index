@@ -93,13 +93,13 @@ func ColumnPathWithStatus(tdir, col string, isNum bool, s, e string, status byte
 		// <column name>.<index type>.idx.adding.<pid>.<start>-<end>
 		//   <index type> ...  num or tri ?
 		//   <start>,<end>  ... value
-		return fmt.Sprintf("%s.adding.%d.%s-%s", ColumnPath(tdir, col, isNum), os.Getgid(), s, e)
+		return fmt.Sprintf("%s.adding.%d.%s-%s", ColumnPath(tdir, col, isNum), time.Now().UnixNano(), s, e)
 	case RECORD_WRITTEN:
 		// <column name>.<index type>.<start>-<end>.<inode number>.<offset>
 		return fmt.Sprintf("%s.%s-%s", ColumnPath(tdir+"/"+AddingDir(s, 4), col, isNum), s, e)
 
 	case RECORD_MERGING:
-		return fmt.Sprintf("%s.merging.%d.%s-%s", ColumnPath(tdir, col, isNum), os.Getgid(), s, e)
+		return fmt.Sprintf("%s.merging.%d.%s-%s", ColumnPath(tdir, col, isNum), time.Now().UnixNano(), s, e)
 
 	case RECORD_MERGED:
 		return fmt.Sprintf("%s.merged.%s-%s", ColumnPath(tdir, col, isNum), s, e)
@@ -160,6 +160,7 @@ func (c *Column) updateFile(f *File) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	for r := range f.Records(ctx, c.Flist.Dir) {
+		Log(LOG_DEBUG, "record info record=%+v\n", r)
 		if !r.IsExist(c) {
 			c.Dirties = c.Dirties.Add(r)
 		}
@@ -409,8 +410,9 @@ func (c *Column) baseMergeIndex(w IdxWriter, ctx context.Context) error {
 	keyrecords := query.NewKeyRecordList()
 	keyrecords.Base = base.NewNoLayer(keyrecords.Base)
 
-	var keyRecord *query.KeyRecord
-	var recs *query.RecordList
+	mergedKeyRecords := keyrecords
+	mergedKeyRecords.Base = keyrecords.Base
+
 	var firstPath *IndexFile
 	var lastPath *IndexFile
 	noMergeIdxFiles := []*IndexFile{}
@@ -457,39 +459,38 @@ func (c *Column) baseMergeIndex(w IdxWriter, ctx context.Context) error {
 				Log(LOG_WARN, "mergeIndex(): %s column index file not found\n", f.Path)
 				return nil
 			}
-			if keyRecord == nil || f.IdxInfo().first != keyRecord.Key().Uint64() {
-				if keyRecord != nil {
-					cnt := keyrecords.Count()
-					e := keyRecord.SetRecords(recs)
-					if e != nil {
-						Log(LOG_ERROR, "mergeIndex(): %s fail to set to records\n", f.Path)
-						return e
+
+			addedKeyRecord := query.NewKeyRecord()
+			addedKeyRecord.Base = base.NewNoLayer(addedKeyRecord.Base)
+
+			addRecs := query.NewRecordList()
+			addRecs.Base = base.NewNoLayer(addRecs.Base)
+			for i, matchKr := range mergedKeyRecords.All() {
+				if matchKr.Key().Uint64() == kr.Key().Uint64() {
+					addedKeyRecord.SetKey(query.FromUint64(kr.Key().Uint64()))
+
+					recDump := func(r *query.Record) string {
+						return fmt.Sprintf("FileId=%+v Offset=%+v",
+							r.FileId().Uint64(), r.Offset().Int64())
 					}
-					keyRecord.Flatten()
-					e = keyrecords.SetAt(cnt, keyRecord)
-					if e != nil {
-						Log(LOG_ERROR, "mergeIndex(): %s fail to set to keyrecords cnt=%d\n", f.Path, cnt)
-						return e
-					}
+					fmt.Printf("add key=%d(%s) %s\n", kr.Key().Uint64(), DecodeTri(kr.Key().Uint64()), recDump(kr.Value()))
+					addRecs = matchKr.Records()
+					addRecs.SetAt(matchKr.Records().Count(), kr.Value())
+					addRecs.Flatten()
+					addedKeyRecord.SetRecords(addRecs)
+					mergedKeyRecords.SetAt(i, addedKeyRecord)
+
+					goto ADDED
 				}
-				keyRecord = query.NewKeyRecord()
-				keyRecord.Base = base.NewNoLayer(keyRecord.Base)
-				keyRecord.SetKey(query.FromUint64(f.IdxInfo().first))
 
 			}
 
-			cnt := keyRecord.Records().Count()
-			if cnt == 0 {
-				recs = query.NewRecordList()
-				recs.Base = base.NewNoLayer(recs.Base)
-			} else {
-				recs = keyRecord.Records()
-			}
-			e := recs.SetAt(cnt, kr.Value())
-			if e != nil {
-				Log(LOG_ERROR, "mergeIndex(): %s fail to set to recs cnt=%d\n", f.Path, cnt)
-				return e
-			}
+			addedKeyRecord.SetKey(query.FromUint64(kr.Key().Uint64()))
+			addRecs.SetAt(0, kr.Value())
+			addedKeyRecord.SetRecords(addRecs)
+			mergedKeyRecords.SetAt(mergedKeyRecords.Count(), addedKeyRecord)
+
+		ADDED:
 
 			select {
 			case <-ctx.Done():
@@ -521,13 +522,8 @@ func (c *Column) baseMergeIndex(w IdxWriter, ctx context.Context) error {
 		return nil
 	}
 
-	if query.KeyRecordSingle(keyrecords.At(cnt-1)).Key().Uint64() != keyRecord.Key().Uint64() {
-		keyRecord.SetRecords(recs)
-		keyRecord.Flatten()
-		keyrecords.SetAt(cnt, keyRecord)
-	}
-	keyrecords.Flatten()
-	idxNum.SetIndexes(keyrecords)
+	mergedKeyRecords.Flatten()
+	idxNum.SetIndexes(mergedKeyRecords)
 
 	root.SetIndex(&query.Index{CommonNode: idxNum.CommonNode})
 	root.Flatten()
@@ -555,6 +551,9 @@ func (c *Column) baseMergeIndex(w IdxWriter, ctx context.Context) error {
 
 	io.Write(root.R(0))
 	Log(LOG_DEBUG, "S: written %s \n", wIdxPath)
+	for _, f := range noMergeIdxFiles {
+		Log(LOG_DEBUG, "S: \tmerged-indexes %+v \n", f.Path)
+	}
 	e = SafeRename(wIdxPath, path)
 	if e != nil {
 		os.Remove(wIdxPath)

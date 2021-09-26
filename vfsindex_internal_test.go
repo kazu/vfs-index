@@ -535,6 +535,25 @@ func Test_GetDecoder(t *testing.T) {
 
 }
 
+func Test_Parse_Jsonl(t *testing.T) {
+	dec, _ := GetDecoder("test.1.json")
+	const jsonStream = `
+	{"Name": "Ed", "Text": "Knock knock."}
+	{"Name": "Sam", "Text": "Who's there?"}
+	{"Name": "Ed", "Text": "Go fmt."}
+	{"Name": "Sam", "Text": "Go fmt who?"}
+	{"Name": "Ed", "Text": "Go fmt yourself!"}
+	`
+	rio := strings.NewReader(jsonStream)
+	var rec *Record
+	ctx, cancel := context.WithCancel(context.Background())
+	for r := range dec.Tokenizer(ctx, rio, &File{id: 123, name: "test", index_at: time.Now().UnixNano()}) {
+		rec = r
+	}
+	cancel()
+	fmt.Printf("%+v", rec)
+
+}
 func Test_Parse_CSV(t *testing.T) {
 	setup()
 

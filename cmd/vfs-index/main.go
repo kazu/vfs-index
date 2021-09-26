@@ -41,6 +41,7 @@ Flags:
 	-column		column name for index  
 	-table		table name for index. prefix name in data file
 	-data		data directory
+	-v          verbose output
 	-h,-help    help for index
 `
 
@@ -62,6 +63,7 @@ Flags:
 					string search: 		'name.search("foobar")'
 					numeric condition:	'id == 23456' or 'id < 23456' ...
 	-h,-help    help for search
+	-v          verbose output
 `
 
 const UsageMerge string = `Merge splited index file
@@ -75,6 +77,7 @@ Flags:
 	-column		column name for index  
 	-table		table name for index. prefix name in data file
 	-data		data directory
+	-v          verbose output
 	-h,-help    help for merge
 `
 const UsageInfo string = `get information index files
@@ -89,6 +92,7 @@ Flags:
 	-table		table name for index. prefix name in data file
 	-data		data directory
 	-info       indexfile
+	-v          verbose output
 	-h,-help    help for merge
 
 	
@@ -104,7 +108,7 @@ Flags:
    -r,-read    read parameter
    -w,-write   update parameter
    -h,-help    help for config
-
+   -v          verbose output
 	
 `
 
@@ -154,9 +158,9 @@ var Cmds = []Cmd{
 }
 
 type CmdOpt struct {
-	name, indexDir, column, table, dir, query, output, info, value string
-	first, help, nomerge, qstdin, noclean, list, read, write       bool
-	config                                                         *vfs.ConfigFile
+	name, indexDir, column, table, dir, query, output, info, value    string
+	first, help, nomerge, qstdin, noclean, list, read, write, verbose bool
+	config                                                            *vfs.ConfigFile
 }
 
 type Cmd struct {
@@ -189,6 +193,9 @@ CONF_PWD:
 
 LOAD_FILE:
 	if conf, err = vfs.LoadCmdConfig(confdir); err == nil {
+		if cparam.verbose {
+			fmt.Printf("load config %s\n", confdir)
+		}
 		goto ENSURE
 	}
 
@@ -293,6 +300,9 @@ func main() {
 	cmd.Flag.StringVar(&opt.value, "value", "", "write/update configuration params value")
 	cmd.Flag.StringVar(&opt.value, "v", "", "value (shorthand)")
 
+	cmd.Flag.BoolVar(&opt.verbose, "verbose", false, "verbose output")
+	cmd.Flag.BoolVar(&opt.verbose, "vv", false, "verbose output (shorthand)")
+
 	cmd.Flag.Parse(os.Args[2:])
 
 	if !validate(os.Args, opt) {
@@ -309,7 +319,9 @@ func main() {
 
 func indexing(opt CmdOpt) {
 	vfs.CurrentLogLoevel = vfs.LOG_WARN
-	//vfs.CurrentLogLoevel = vfs.LOG_DEBUG
+	if opt.verbose {
+		vfs.CurrentLogLoevel = vfs.LOG_DEBUG
+	}
 
 	idx, e := vfs.Open(opt.dir, vfs.RootDir(opt.indexDir), vfs.RegitConcurrent(8))
 
@@ -322,7 +334,9 @@ func indexing(opt CmdOpt) {
 
 func merge(opt CmdOpt) {
 	vfs.CurrentLogLoevel = vfs.LOG_WARN
-	//vfs.CurrentLogLoevel = vfs.LOG_DEBUG
+	if opt.verbose {
+		vfs.CurrentLogLoevel = vfs.LOG_DEBUG
+	}
 
 	idx, e := vfs.Open(opt.dir, vfs.RootDir(opt.indexDir))
 
@@ -344,6 +358,9 @@ func merge(opt CmdOpt) {
 
 func setup_command(opt CmdOpt) (*vfs.SearchCond, error) {
 	vfs.CurrentLogLoevel = vfs.LOG_WARN
+	if opt.verbose {
+		vfs.CurrentLogLoevel = vfs.LOG_DEBUG
+	}
 	idx, e := vfs.Open(opt.dir, vfs.RootDir(opt.indexDir))
 	if e != nil {
 		return nil, e
@@ -501,14 +518,16 @@ func prepare_search(opt *CmdOpt) {
 			opt.query = fmt.Sprintf("%s.search(\"%s\")", opt.column, line)
 		}
 	}
+	vfs.Log(vfs.LOG_DEBUG, "search query=%s\n", opt.query)
 	return
 }
 
 func search(opt CmdOpt) {
-	prepare_search(&opt)
-
-	//vfs.CurrentLogLoevel = vfs.LOG_DEBUG
 	vfs.CurrentLogLoevel = vfs.LOG_ERROR
+	if opt.verbose {
+		vfs.CurrentLogLoevel = vfs.LOG_DEBUG
+	}
+	prepare_search(&opt)
 
 	var b strings.Builder
 	vfs.LogWriter = &b

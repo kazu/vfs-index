@@ -468,15 +468,26 @@ func (f *IndexFile) recordByKey(key uint64) RecordFn {
 				records = append(records, arg.rec.Value())
 				return
 			}
+			if arg.kr == nil {
+				return
+			}
+			Log(LOG_DEBUG, "records %+v\n", arg.kr.Records())
+			Log(LOG_DEBUG, "record count %d\n", arg.kr.Records().Count())
 			for i := 0; i < arg.kr.Records().Count(); i++ {
-				if arg.krSfn(arg.sCur+i) == SkipTrue {
+				sResult := arg.krSfn(arg.sCur + i)
+				Log(LOG_DEBUG, "skip result %+v\n", sResult)
+				if sResult == SkipTrue {
 					continue
 				}
-				if arg.krSfn(arg.sCur+i) == SkipFinish {
+				if sResult == SkipFinish {
 					//skipCur += i
 					return
 				}
 				r, _ := arg.kr.Records().At(i)
+				recDump := func(r *query.Record) string {
+					return fmt.Sprintf("FileId=%+v Offset=%+v", r.FileId().Uint64(), r.Offset().Int64())
+				}
+				Log(LOG_DEBUG, "found add %+v\n", recDump(r))
 				records = append(records, r)
 			}
 			return
@@ -520,6 +531,7 @@ func (f *IndexFile) recordInfoByKey(key uint64, fn InfoFn) ResultFn {
 		idxs := f.FindByKey(key)
 		skipCur := 0
 		for _, idx := range idxs {
+			Log(LOG_DEBUG, "recordInfoByKey() idx.path=%s\n", idx.Path)
 			if idx == nil {
 				continue
 			}
@@ -535,8 +547,16 @@ func (f *IndexFile) recordInfoByKey(key uint64, fn InfoFn) ResultFn {
 				skipCur++
 			} else if idx.IsType(IdxFileType_Merge) {
 				kr := idx.KeyRecords().Find(func(kr *query.KeyRecord) bool {
+					Log(LOG_DEBUG, "KeyRecords().Find() kt.key=%+v(%s) key=%+v(%s)\n",
+						kr.Key().Uint64(), DecodeTri(kr.Key().Uint64()),
+						key, DecodeTri(key))
+					Log(LOG_DEBUG, "  count=%d\n", kr.Records().Count())
 					return kr.Key().Uint64() == key
 				})
+				if kr.CommonNode == nil {
+					skipCur++
+					continue
+				}
 				fn(RecordInfoArg{true, nil, kr, skipCur, skipFn})
 				skipCur += kr.Records().Count()
 			}
