@@ -31,6 +31,14 @@ func (node KeyRecordList) At(i int) (result *KeyRecord, e error) {
 	return
 }
 
+func (node KeyRecordList) AtWihoutError(i int) (result *KeyRecord) {
+	result, e := node.At(i)
+	if e != nil {
+		result = nil
+	}
+	return
+}
+
 func (node KeyRecordList) SetAt(i int, v *KeyRecord) error {
 	return (*base.List)(node.CommonNode).SetAt(i, v.CommonNode)
 }

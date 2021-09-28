@@ -31,6 +31,14 @@ func (node FileList) At(i int) (result *File, e error) {
 	return
 }
 
+func (node FileList) AtWihoutError(i int) (result *File) {
+	result, e := node.At(i)
+	if e != nil {
+		result = nil
+	}
+	return
+}
+
 func (node FileList) SetAt(i int, v *File) error {
 	return (*base.List)(node.CommonNode).SetAt(i, v.CommonNode)
 }

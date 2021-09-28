@@ -31,6 +31,14 @@ func (node IdxEntryList) At(i int) (result *IdxEntry, e error) {
 	return
 }
 
+func (node IdxEntryList) AtWihoutError(i int) (result *IdxEntry) {
+	result, e := node.At(i)
+	if e != nil {
+		result = nil
+	}
+	return
+}
+
 func (node IdxEntryList) SetAt(i int, v *IdxEntry) error {
 	return (*base.List)(node.CommonNode).SetAt(i, v.CommonNode)
 }

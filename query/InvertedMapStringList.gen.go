@@ -31,6 +31,14 @@ func (node InvertedMapStringList) At(i int) (result *InvertedMapString, e error)
 	return
 }
 
+func (node InvertedMapStringList) AtWihoutError(i int) (result *InvertedMapString) {
+	result, e := node.At(i)
+	if e != nil {
+		result = nil
+	}
+	return
+}
+
 func (node InvertedMapStringList) SetAt(i int, v *InvertedMapString) error {
 	return (*base.List)(node.CommonNode).SetAt(i, v.CommonNode)
 }

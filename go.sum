@@ -35,10 +35,8 @@ github.com/h2non/filetype v1.1.0/go.mod h1:319b3zT68BvV+WRj7cwy856M2ehB3HqNOt6sy
 github.com/jszwec/csvutil v1.3.0 h1:d0zzXKQYvc22b4La5Wcp97CDgQ7JDLGJLm2NWqJGEYg=
 github.com/jszwec/csvutil v1.3.0/go.mod h1:Rpu7Uu9giO9subDyMCIQfHVDuLrcaC36UA4YcJjGBkg=
 github.com/jteeuwen/go-bindata v3.0.7+incompatible/go.mod h1:JVvhzYOiGBnFSYRyV00iY8q7/0PThjIYav1p9h5dmKs=
-github.com/kazu/fbshelper v0.1.5 h1:+0Rc3826RPRPAVYi6EhIFMqkLquf10i9zEt6xY6m/eU=
-github.com/kazu/fbshelper v0.1.5/go.mod h1:qzutKcarq4M6lrUTNeTpXJnSkPaWSqo62VIPJ0zof+Q=
-github.com/kazu/fbshelper v0.1.6 h1:ZCouCDELM2eDuJZdMaP3W9i2+hIV6EWrNKCD7U5+EOU=
-github.com/kazu/fbshelper v0.1.6/go.mod h1:qzutKcarq4M6lrUTNeTpXJnSkPaWSqo62VIPJ0zof+Q=
+github.com/kazu/fbshelper v0.1.8 h1:s9Vj+gjdXw3cXrJdNMMXp1RgRaMmd3EklI13Eh16J54=
+github.com/kazu/fbshelper v0.1.8/go.mod h1:qzutKcarq4M6lrUTNeTpXJnSkPaWSqo62VIPJ0zof+Q=
 github.com/kazu/loncha v0.1.1-0.20200710154512-e798f5f17702/go.mod h1:fx5XoY5rwT/8HAeqzPvndXUB/DNJRYQpiaewHR/kfFM=
 github.com/kazu/loncha v0.1.1 h1:OZ9mTO6d5xsGyIH0+XXsKVz/mjvNvneXHN83szFdE+A=
 github.com/kazu/loncha v0.1.1/go.mod h1:fx5XoY5rwT/8HAeqzPvndXUB/DNJRYQpiaewHR/kfFM=

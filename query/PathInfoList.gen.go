@@ -31,6 +31,14 @@ func (node PathInfoList) At(i int) (result *PathInfo, e error) {
 	return
 }
 
+func (node PathInfoList) AtWihoutError(i int) (result *PathInfo) {
+	result, e := node.At(i)
+	if e != nil {
+		result = nil
+	}
+	return
+}
+
 func (node PathInfoList) SetAt(i int, v *PathInfo) error {
 	return (*base.List)(node.CommonNode).SetAt(i, v.CommonNode)
 }
