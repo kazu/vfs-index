@@ -428,15 +428,16 @@ func (c *Column) baseMergeIndex(w IdxWriter, ctx context.Context) error {
 		if l.Count() == 0 {
 			return -1
 		}
-		lastMergedKr, e := l.Last()
-		if e != nil {
+		idx := l.SearchIndex(func(q *query.KeyRecord) bool {
+			return q.Key().Uint64() >= kr.Key().Uint64()
+		})
+		if idx == -1 {
+			return idx
+		}
+		if lastMergedKr := l.AtWihoutError(idx); lastMergedKr != nil && lastMergedKr.Key().Uint64() != kr.Key().Uint64() {
 			return -1
 		}
-		if lastMergedKr.Key().Uint64() != kr.Key().Uint64() {
-			return -1
-		}
-		return l.Count() - 1
-
+		return idx
 	}
 	_ = findKr
 
