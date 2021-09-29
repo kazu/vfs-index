@@ -18,12 +18,10 @@ const (
 	SkipFinish
 )
 
-type RecordFn func(SkipFn) []*query.Record
-type SkipFn func(int) SkipType
 type GetColumn func() *Column
 type SearchFinder struct {
 	column    GetColumn
-	recordFns []RecordFn
+	recordFns []SearchFn
 	skipdFns  []SkipFn
 	keys      []uint64
 }
@@ -79,6 +77,10 @@ func (sf *SearchFinder) And(i int, key uint64) (result SkipFn) {
 	var records []*query.Record
 	var records2 []*query.Record
 
+	found := map[int]bool{}
+
+	isCached := false
+
 	idx := len(sf.skipdFns) - 1
 	oFn := EmptySkip
 	if idx >= 0 {
@@ -102,7 +104,7 @@ func (sf *SearchFinder) And(i int, key uint64) (result SkipFn) {
 		}()
 
 		if len(records) == 0 {
-			records = sf.recordFns[i](EmptySkip)
+			records = sf.recordFns[i].RecFn(EmptySkip)
 		}
 		if oFn != nil && oFn(k) != SkipFalse {
 			return oFn(k)
@@ -114,25 +116,24 @@ func (sf *SearchFinder) And(i int, key uint64) (result SkipFn) {
 		if len(records) == 0 || len(records2) == 0 {
 			return SkipFinish
 		}
-
-		for j := range records {
-			found := false
-			for i := range records2 {
-				if IsEqQRecord(records[j], records2[i]) {
-					found = true
-					break
+		if !isCached {
+			for j := range records {
+				for i := range records2 {
+					if IsEqQRecord(records[j], records2[i]) {
+						found[j] = true
+						break
+					}
 				}
 			}
-			if found && j == k {
-				r = SkipFalse
-				return
-			}
-			if j == k {
-				break
-			}
+			isCached = true
 		}
-		r = SkipTrue
-		return
+
+		if found[k] {
+			return SkipFalse
+		}
+
+		return SkipTrue
+
 	}
 }
 
@@ -167,13 +168,19 @@ func (sf *SearchFinder) All(opts ...ResultOpt) interface{} {
 }
 func (sf *SearchFinder) Records() (recs []*query.Record) {
 	for i := range sf.recordFns {
-		recs = append(recs, sf.recordFns[i](sf.skipdFns[i])...)
+		sf.recordFns[i].forRecord = true
+		recs = append(recs, sf.recordFns[i].RecFn(sf.skipdFns[i])...)
 	}
 	return
 }
 
-func (sf *SearchFinder) Count() int {
-	return len(sf.recordFns)
+func (sf *SearchFinder) Count() (cnt int) {
+	cnt = 0
+	for i := range sf.recordFns {
+		//sf.recordFns[i].forRecord = true
+		cnt = sf.recordFns[i].CntFn(sf.skipdFns[i])
+	}
+	return
 }
 
 func (sf *SearchFinder) First(opts ...ResultOpt) interface{} {
@@ -183,9 +190,8 @@ func (sf *SearchFinder) First(opts ...ResultOpt) interface{} {
 	if sf.Count() == 0 {
 		return nil
 	}
-	fmt.Printf("sf.Count()=%d\n", sf.Count())
 
-	recs := sf.recordFns[0](sf.skipdFns[0])
+	recs := sf.recordFns[0].RecFn(sf.skipdFns[0])
 	return opts[0](sf.column(), []*query.Record{recs[0]})
 
 }
@@ -199,7 +205,7 @@ func (sf *SearchFinder) Last(opts ...ResultOpt) interface{} {
 	}
 
 	idx := len(sf.recordFns) - 1
-	recs := sf.recordFns[idx](sf.skipdFns[idx])
+	recs := sf.recordFns[idx].RecFn(sf.skipdFns[idx])
 
 	return opts[0](sf.column(), []*query.Record{recs[len(recs)-1]})
 }

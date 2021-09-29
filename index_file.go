@@ -60,6 +60,22 @@ type ResultFn func(SkipFn)
 // InfoFn ... function to find record infomation
 type InfoFn func(RecordInfoArg)
 
+// RecordFn .. function to retrun record slices
+type RecordFn func(SkipFn) []*query.Record
+
+// CountFn .. function to retrun count of record
+type CountFn func(SkipFn) int
+
+// SkipFn .. function to filter record result
+type SkipFn func(int) SkipType
+
+// SearchFn ... aggreate RecordFn and CountFn
+type SearchFn struct {
+	forRecord bool
+	RecFn     RecordFn
+	CntFn     CountFn
+}
+
 // RecordInfoArg ... params for InfoFn
 type RecordInfoArg struct {
 	isKeyRecord bool
@@ -198,6 +214,14 @@ func ListMergedIndex(c *Column, fn CondFn, opts ...SelectOption) (result []*Inde
 		}),
 	)
 	return
+}
+
+func (fn SearchFn) Do(skipFn SkipFn) interface{} {
+	if fn.forRecord {
+		return fn.RecFn(skipFn)
+	}
+
+	return fn.CntFn(skipFn)
 }
 
 func (f IndexFile) Column() *Column {
@@ -477,13 +501,14 @@ func (f *IndexFile) LastRecord() *Record {
 func (f *IndexFile) RecordByKey2(key uint64) RecordFn {
 	return f.recordByKeyFn(key)
 }
+func (f *IndexFile) commonFnByKey(key uint64) (result SearchFn) {
 
-func (f *IndexFile) recordByKeyFn(key uint64) RecordFn {
+	type AddFn func(interface{})
 
-	return func(skipFn SkipFn) (records []*query.Record) {
+	baseFn := func(skipFn SkipFn, addFn AddFn) {
 		f.recordInfoByKeyFn(key, func(arg RecordInfoArg) {
 			if !arg.isKeyRecord {
-				records = append(records, arg.rec.Value())
+				addFn(arg.rec.Value())
 				return
 			}
 			if arg.kr == nil {
@@ -506,34 +531,39 @@ func (f *IndexFile) recordByKeyFn(key uint64) RecordFn {
 					return fmt.Sprintf("FileId=%+v Offset=%+v", r.FileId().Uint64(), r.Offset().Int64())
 				}
 				Log(LOG_DEBUG, "found add %+v\n", recDump(r))
-				records = append(records, r)
+				addFn(arg.rec.Value())
 			}
 			return
 		})(skipFn)
+	}
+	result.RecFn = func(skipFn SkipFn) (records []*query.Record) {
+		baseFn(skipFn, func(r interface{}) {
+			records = append(records, r.(*query.Record))
+		})
 		return
 	}
+
+	result.CntFn = func(skipFn SkipFn) (cnt int) {
+		baseFn(skipFn, func(r interface{}) {
+			cnt++
+		})
+		return
+	}
+
+	return
+
+}
+
+func (f *IndexFile) recordByKeyFn(key uint64) RecordFn {
+	return f.commonFnByKey(key).RecFn
 }
 
 func (f *IndexFile) countBy(key uint64) (cnt int) {
-	cnt = 0
-	f.recordInfoByKeyFn(key, func(arg RecordInfoArg) {
-		if !arg.isKeyRecord {
-			cnt++
-			return
-		}
+	return f.countFnBy(key)(EmptySkip)
+}
 
-		for i := 0; i < arg.kr.Records().Count(); i++ {
-			if arg.krSfn(arg.sCur+i) == SkipTrue {
-				continue
-			}
-			if arg.krSfn(arg.sCur+i) == SkipFinish {
-				//skipCur += i
-				return
-			}
-			cnt++
-		}
-	})(EmptySkip)
-	return cnt
+func (f *IndexFile) countFnBy(key uint64) CountFn {
+	return f.commonFnByKey(key).CntFn
 }
 
 func (f *IndexFile) recordInfoByKeyFn(key uint64, fn InfoFn) ResultFn {
@@ -576,7 +606,6 @@ func (f *IndexFile) recordInfoByKeyFn(key uint64, fn InfoFn) ResultFn {
 					skipCur++
 					continue
 				}
-				fmt.Printf("%+v %+v %+v\n", kr, skipCur, skipFn)
 				fn(RecordInfoArg{true, nil, kr, skipCur, skipFn})
 				skipCur += kr.Records().Count()
 			}
@@ -587,15 +616,21 @@ func (f *IndexFile) recordInfoByKeyFn(key uint64, fn InfoFn) ResultFn {
 
 // RecordNearByKeyFn ... return function near matching of query.Record
 func (f *IndexFile) RecordNearByKeyFn(key uint64, less bool) RecordFn {
+	return f.commonNearFnByKey(key, less).RecFn
+}
 
-	return func(skipFn SkipFn) (records []*query.Record) {
+// CountNearByKeyFn ... return function count to matching near
+func (f *IndexFile) CountNearByKeyFn(key uint64, less bool) CountFn {
+	return f.commonNearFnByKey(key, less).CntFn
+}
+
+func (f *IndexFile) commonNearFnByKey(key uint64, less bool) (result SearchFn) {
+
+	type AddFn func(interface{})
+
+	baseFn := func(skipFn SkipFn, addFn AddFn) {
 		idxs := f.FindNearByKey(key, less)
-
-		defer func() {
-			Log(LOG_DEBUG, "recs=%v\n", records)
-		}()
 		skipCur := 0
-		//idx := idxs[0]
 		var sidx, lidx uint64
 
 		loncha.Delete(&idxs, func(i int) bool {
@@ -639,7 +674,7 @@ func (f *IndexFile) RecordNearByKeyFn(key uint64, less bool) RecordFn {
 					}
 
 					r, _ := kr.Records().At(j)
-					records = append(records, r)
+					addFn(r)
 				}
 				skipCur += kr.Records().Count()
 			}
@@ -685,7 +720,7 @@ func (f *IndexFile) RecordNearByKeyFn(key uint64, less bool) RecordFn {
 						return errors.New("traverse finish")
 					}
 
-					records = append(records, f.KeyRecord().Value())
+					addFn(f.KeyRecord().Value())
 				} else if f.IsType(IdxFileType_Merge) {
 					kr := f.KeyRecords().Find(func(kr *query.KeyRecord) bool {
 						return kr.Key().Uint64() == key
@@ -700,15 +735,34 @@ func (f *IndexFile) RecordNearByKeyFn(key uint64, less bool) RecordFn {
 						}
 
 						r, _ := kr.Records().At(i)
-						records = append(records, r)
+						addFn(r)
 					}
 				}
 				return nil
 			}),
 		)
+	}
+	result.RecFn = func(skipFn SkipFn) (records []*query.Record) {
+		defer func() {
+			Log(LOG_DEBUG, "RecordNearByKeyFn(): recs=%v\n", records)
+		}()
 
+		baseFn(skipFn, func(r interface{}) {
+			records = append(records, r.(*query.Record))
+		})
 		return
 	}
+	result.CntFn = func(skipFn SkipFn) (cnt int) {
+		defer func() {
+			Log(LOG_DEBUG, "CountNearByKeyFn(): cnt=%d\n", cnt)
+		}()
+		baseFn(skipFn, func(r interface{}) {
+			cnt++
+		})
+		return cnt
+	}
+
+	return
 }
 
 func (f *IndexFile) FindByKey(key uint64) (result []*IndexFile) {

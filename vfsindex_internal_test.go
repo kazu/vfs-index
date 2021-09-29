@@ -453,7 +453,7 @@ func Test_IndexFile_RecordByKey(t *testing.T) {
 	fn := finder.recordByKeyFn(keys[0])
 
 	sf2 := NewSearchFinder(sCond.Column())
-	sf2.recordFns = append(sf2.recordFns, fn)
+	sf2.recordFns = append(sf2.recordFns, SearchFn{RecFn: fn})
 	sf2.skipdFns = append(sf2.skipdFns, EmptySkip)
 	sf2.skipdFns[0] = sf2.And(0, keys[1])
 	results := sf2.All().([]interface{})
@@ -479,7 +479,7 @@ func Test_IndexFile_RecordNearByKey(t *testing.T) {
 	key := uint64(0x5300740075)
 	//key := uint64(0x0a000a0033)
 
-	fn := finder.RecordNearByKeyFn(key, true)
+	fn := finder.commonNearFnByKey(key, true)
 
 	sf2 := NewSearchFinder(sCond.Column())
 	sf2.recordFns = append(sf2.recordFns, fn)

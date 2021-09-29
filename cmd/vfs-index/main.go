@@ -56,6 +56,7 @@ Flags:
 	-column		column name for index  
 	-table		table name for index. prefix name in data file
 	-data		data directory
+	-cnt        output count to match
 	-output 	output format, json, csv available. Default: json 
 	-qstdin		string search via STDIN, if qstdin is set, ignore -q flag
 	-q,-query	search query 
@@ -158,9 +159,9 @@ var Cmds = []Cmd{
 }
 
 type CmdOpt struct {
-	name, indexDir, column, table, dir, query, output, info, value    string
-	first, help, nomerge, qstdin, noclean, list, read, write, verbose bool
-	config                                                            *vfs.ConfigFile
+	name, indexDir, column, table, dir, query, output, info, value         string
+	first, help, nomerge, qstdin, noclean, list, read, write, verbose, cnt bool
+	config                                                                 *vfs.ConfigFile
 }
 
 type Cmd struct {
@@ -302,6 +303,9 @@ func main() {
 
 	cmd.Flag.BoolVar(&opt.verbose, "verbose", false, "verbose output")
 	cmd.Flag.BoolVar(&opt.verbose, "vv", false, "verbose output (shorthand)")
+
+	cmd.Flag.BoolVar(&opt.cnt, "cnt", false, "match count")
+	cmd.Flag.BoolVar(&opt.cnt, "c", false, "match count (shorthand)")
 
 	cmd.Flag.Parse(os.Args[2:])
 
@@ -553,15 +557,25 @@ func search(opt CmdOpt) {
 
 	sCond := idx.On(opt.table, vfs.ReaderColumn(opt.column), vfs.MergeOnSearch(!opt.nomerge))
 
+	defer func() {
+		sCond.CancelAndWait()
+
+		out := os.Stderr
+		out.WriteString(b.String())
+	}()
+
+	if opt.cnt {
+		result := sCond.Query(opt.query).Count()
+		fmt.Printf("%d\n", result)
+		return
+	}
+
 	if opt.first {
 		result := sCond.Query(opt.query).First(vfs.ResultOutput(opt.output))
 		fmt.Printf("%s\n", result)
-	} else {
-		results := sCond.Query(opt.query).All(vfs.ResultOutput(opt.output))
-		fmt.Printf("%s\n", results)
+		return
 	}
-	sCond.CancelAndWait()
 
-	out := os.Stderr
-	out.WriteString(b.String())
+	results := sCond.Query(opt.query).All(vfs.ResultOutput(opt.output))
+	fmt.Printf("%s\n", results)
 }
