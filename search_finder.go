@@ -109,7 +109,7 @@ func (sf *SearchFinder) And(i int, key uint64) (result SkipFn) {
 		}
 		idx := OpenIndexFile(sf.column())
 		if len(records2) == 0 {
-			records2 = idx.recordByKey(key)(EmptySkip)
+			records2 = idx.recordByKeyFn(key)(EmptySkip)
 		}
 		if len(records) == 0 || len(records2) == 0 {
 			return SkipFinish
@@ -183,6 +183,7 @@ func (sf *SearchFinder) First(opts ...ResultOpt) interface{} {
 	if sf.Count() == 0 {
 		return nil
 	}
+	fmt.Printf("sf.Count()=%d\n", sf.Count())
 
 	recs := sf.recordFns[0](sf.skipdFns[0])
 	return opts[0](sf.column(), []*query.Record{recs[0]})

@@ -32,6 +32,7 @@ type IndexFile struct {
 	c     *Column
 }
 
+// SelectOpt ... sarch options for select.
 type SelectOpt struct {
 	asc         bool
 	cond        CondFn
@@ -41,14 +42,25 @@ type SelectOpt struct {
 	enableRange bool
 }
 
+// SelectOption ... for setting option parameter in Select()
 type SelectOption func(*SelectOpt)
+
+// CondType ... Condition Type to traversse in Select()
 type CondType byte
+
+// TraverseFn ... function to traverse in Select()
 type TraverseFn func(f *IndexFile) error
+
+// CondFn ... function to check condition in Select()
 type CondFn func(f *IndexFile) CondType
 
+// ResultFn ... function to find record with SkipFn
 type ResultFn func(SkipFn)
+
+// InfoFn ... function to find record infomation
 type InfoFn func(RecordInfoArg)
 
+// RecordInfoArg ... params for InfoFn
 type RecordInfoArg struct {
 	isKeyRecord bool
 	rec         *query.InvertedMapNum
@@ -64,17 +76,21 @@ const (
 	CondLazy
 )
 
+// OptCcondFn ... set option of CondFn in Select()
 func OptCcondFn(c CondFn) SelectOption {
 	return func(opt *SelectOpt) {
 		opt.cond = c
 	}
 }
 
+// OptAsc ... set option of order to search in Select()
 func OptAsc(isAsc bool) SelectOption {
 	return func(opt *SelectOpt) {
 		opt.asc = isAsc
 	}
 }
+
+// OptTraverse ... set option of TraverseFnin Select()
 func OptTraverse(fn TraverseFn) SelectOption {
 
 	return func(opt *SelectOpt) {
@@ -82,6 +98,7 @@ func OptTraverse(fn TraverseFn) SelectOption {
 	}
 }
 
+// OptRange ... set option of range Select()
 func OptRange(start, last uint64) SelectOption {
 	return func(opt *SelectOpt) {
 		opt.start = start
@@ -90,12 +107,13 @@ func OptRange(start, last uint64) SelectOption {
 	}
 }
 
-func (opt *SelectOpt) Merge(opts []SelectOption) {
+func (opt *SelectOpt) merge(opts []SelectOption) {
 	for i := range opts {
 		opts[i](opt)
 	}
 }
 
+// LessEqString ... compare strings . if equal or less , return true
 func LessEqString(s, d string) (isLess bool) {
 
 	defer func() {
@@ -225,7 +243,7 @@ func (f *IndexFile) Init() {
 
 func (f *IndexFile) Select(opts ...SelectOption) (err error) {
 	opt := SelectOpt{enableRange: false}
-	opt.Merge(opts)
+	opt.merge(opts)
 
 	names, err := readDirNames(f.Path)
 	names = sortAlphabet(names)
@@ -453,17 +471,17 @@ func (f *IndexFile) LastRecord() *Record {
 	}
 }
 
-// RecordByKey ... return function getting splice of query.Record
+// RecordByKey2 ... return function getting slice of query.Record
 // Deprecated: RecordByKey
 //   should use recordByKey
 func (f *IndexFile) RecordByKey2(key uint64) RecordFn {
-	return f.recordByKey(key)
+	return f.recordByKeyFn(key)
 }
 
-func (f *IndexFile) recordByKey(key uint64) RecordFn {
+func (f *IndexFile) recordByKeyFn(key uint64) RecordFn {
 
 	return func(skipFn SkipFn) (records []*query.Record) {
-		f.recordInfoByKey(key, func(arg RecordInfoArg) {
+		f.recordInfoByKeyFn(key, func(arg RecordInfoArg) {
 			if !arg.isKeyRecord {
 				records = append(records, arg.rec.Value())
 				return
@@ -498,7 +516,7 @@ func (f *IndexFile) recordByKey(key uint64) RecordFn {
 
 func (f *IndexFile) countBy(key uint64) (cnt int) {
 	cnt = 0
-	f.recordInfoByKey(key, func(arg RecordInfoArg) {
+	f.recordInfoByKeyFn(key, func(arg RecordInfoArg) {
 		if !arg.isKeyRecord {
 			cnt++
 			return
@@ -518,7 +536,7 @@ func (f *IndexFile) countBy(key uint64) (cnt int) {
 	return cnt
 }
 
-func (f *IndexFile) recordInfoByKey(key uint64, fn InfoFn) ResultFn {
+func (f *IndexFile) recordInfoByKeyFn(key uint64, fn InfoFn) ResultFn {
 
 	return func(skipFn SkipFn) {
 		elapsed := MesureElapsed()
@@ -567,7 +585,8 @@ func (f *IndexFile) recordInfoByKey(key uint64, fn InfoFn) ResultFn {
 	}
 }
 
-func (f *IndexFile) RecordNearByKey(key uint64, less bool) RecordFn {
+// RecordNearByKeyFn ... return function near matching of query.Record
+func (f *IndexFile) RecordNearByKeyFn(key uint64, less bool) RecordFn {
 
 	return func(skipFn SkipFn) (records []*query.Record) {
 		idxs := f.FindNearByKey(key, less)

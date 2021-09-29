@@ -178,7 +178,7 @@ func (cond *SearchCond) Select(fn func(SearchElem) bool) (sfinder *SearchFinder)
 		case CondOpEq:
 			for i, key := range keys {
 				if i == 0 {
-					sfind.recordFns = append(sfind.recordFns, idxFinder.recordByKey(key))
+					sfind.recordFns = append(sfind.recordFns, idxFinder.recordByKeyFn(key))
 					sfind.skipdFns = append(sfind.skipdFns, EmptySkip)
 				}
 				lastIdx := len(sfind.recordFns) - 1
@@ -189,7 +189,7 @@ func (cond *SearchCond) Select(fn func(SearchElem) bool) (sfinder *SearchFinder)
 		case CondOpLe, CondOpLt:
 			for i, key := range keys {
 				if i == 0 {
-					sfind.recordFns = append(sfind.recordFns, idxFinder.RecordNearByKey(key, true))
+					sfind.recordFns = append(sfind.recordFns, idxFinder.RecordNearByKeyFn(key, true))
 					sfind.skipdFns = append(sfind.skipdFns, EmptySkip)
 				}
 				lastIdx := len(sfind.recordFns) - 1
@@ -200,7 +200,7 @@ func (cond *SearchCond) Select(fn func(SearchElem) bool) (sfinder *SearchFinder)
 		case CondOpGe, CondOpGt:
 			for i, key := range keys {
 				if i == 0 {
-					sfind.recordFns = append(sfind.recordFns, idxFinder.RecordNearByKey(key, false))
+					sfind.recordFns = append(sfind.recordFns, idxFinder.RecordNearByKeyFn(key, false))
 					sfind.skipdFns = append(sfind.skipdFns, EmptySkip)
 				}
 				lastIdx := len(sfind.recordFns) - 1

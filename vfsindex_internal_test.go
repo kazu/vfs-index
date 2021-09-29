@@ -450,7 +450,7 @@ func Test_IndexFile_RecordByKey(t *testing.T) {
 
 	keys := TriKeys("拉致問題")
 
-	fn := finder.recordByKey(keys[0])
+	fn := finder.recordByKeyFn(keys[0])
 
 	sf2 := NewSearchFinder(sCond.Column())
 	sf2.recordFns = append(sf2.recordFns, fn)
@@ -479,7 +479,7 @@ func Test_IndexFile_RecordNearByKey(t *testing.T) {
 	key := uint64(0x5300740075)
 	//key := uint64(0x0a000a0033)
 
-	fn := finder.RecordNearByKey(key, true)
+	fn := finder.RecordNearByKeyFn(key, true)
 
 	sf2 := NewSearchFinder(sCond.Column())
 	sf2.recordFns = append(sf2.recordFns, fn)
