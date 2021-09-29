@@ -531,10 +531,11 @@ func (f *IndexFile) recordInfoByKey(key uint64, fn InfoFn) ResultFn {
 		idxs := f.FindByKey(key)
 		skipCur := 0
 		for _, idx := range idxs {
-			Log(LOG_DEBUG, "recordInfoByKey() idx.path=%s\n", idx.Path)
 			if idx == nil {
 				continue
 			}
+			Log(LOG_DEBUG, "recordInfoByKey() idx.path=%s\n", idx.Path)
+
 			if skipFn(skipCur) == SkipFinish {
 				return
 			}
@@ -557,6 +558,7 @@ func (f *IndexFile) recordInfoByKey(key uint64, fn InfoFn) ResultFn {
 					skipCur++
 					continue
 				}
+				fmt.Printf("%+v %+v %+v\n", kr, skipCur, skipFn)
 				fn(RecordInfoArg{true, nil, kr, skipCur, skipFn})
 				skipCur += kr.Records().Count()
 			}
@@ -703,7 +705,7 @@ func (f *IndexFile) FindByKey(key uint64) (result []*IndexFile) {
 	}
 
 	pat := ColumnPathWithStatus(c.TableDir(), c.Name, c.IsNum, strkey, strkey, RECORD_WRITTEN)
-	//fmt.Printf("%s\n", path)
+
 	paths, _ := filepath.Glob(fmt.Sprintf("%s.*.*", pat))
 	if len(paths) > 0 {
 		for _, path := range paths {
