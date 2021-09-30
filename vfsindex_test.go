@@ -165,6 +165,21 @@ func Test_SearchQueryString(t *testing.T) {
 	sCond.CancelAndWait()
 }
 
+func Test_SearcAndhQuery(t *testing.T) {
+	vfs.CurrentLogLoevel = vfs.LOG_WARN
+	idx, e := OpenIndexer()
+	qstr := `title.search("鬼滅の") && id == 3365460`
+	//qstr = `id == 3365460 && title.search("鬼滅の")`
+	q, _ := expr.GetExpr(qstr)
+
+	sCond := idx.On("test", vfs.ReaderColumn(q.Column), vfs.Output(vfs.MapInfOutput))
+	results := sCond.Query(qstr).All().([]interface{})
+
+	assert.NoError(t, e)
+	assert.True(t, 0 < len(results))
+	sCond.CancelAndWait()
+}
+
 func TestSize(t *testing.T) {
 	a := types.Config{}
 	assert.NotNil(t, a)

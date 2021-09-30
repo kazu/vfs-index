@@ -68,11 +68,15 @@ func (sf *SearchFinder) limit(n int) SkipFn {
 func (sf *SearchFinder) MergeAsAnd(src *SearchFinder) {
 	for _, key := range src.keys {
 		lastIdx := len(sf.recordFns) - 1
-		sf.skipdFns[lastIdx] = sf.And(lastIdx, key)
+		sf.skipdFns[lastIdx] = sf.AndWithColumn(lastIdx, key, src.column())
 	}
 }
 
 func (sf *SearchFinder) And(i int, key uint64) (result SkipFn) {
+	return sf.AndWithColumn(i, key, sf.column())
+}
+
+func (sf *SearchFinder) AndWithColumn(i int, key uint64, col *Column) (result SkipFn) {
 
 	var records []*query.Record
 	var records2 []*query.Record
@@ -115,7 +119,7 @@ func (sf *SearchFinder) And(i int, key uint64) (result SkipFn) {
 		}
 
 		if len(records2) == 0 {
-			idx := OpenIndexFile(sf.column())
+			idx := OpenIndexFile(col)
 			records2 = idx.recordByKeyFn(key)(EmptySkip)
 		}
 		if len(records) == 0 || len(records2) == 0 {

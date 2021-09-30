@@ -108,8 +108,23 @@ func (f *SearchCond) Query(s string) (r *SearchFinder) {
 	return
 }
 
-func (f *SearchCond) query(q *expr.Expr) (r *SearchFinder) {
-	c := f.idxCol
+func (f *SearchCond) changeCol(col string) (cond *SearchCond) {
+
+	cond = &SearchCond{idx: f.idx, flist: f.flist, table: f.table, column: col}
+	cond.startCol(cond.column)
+	cond.idxCol.isMergeOnSearch = f.idx.opt.idxMergeOnSearch
+
+	return
+}
+
+func (of *SearchCond) query(q *expr.Expr) (r *SearchFinder) {
+	c := of.idxCol
+	f := of
+	if c.Name != q.Column {
+		f = of.changeCol(q.Column)
+		c = f.idxCol
+		c.IsNum = c.validateIndexType()
+	}
 
 	if q.Op == "search" && c.Name == q.Column && !c.IsNum {
 		return f.Select(func(cond SearchElem) bool {
