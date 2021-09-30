@@ -103,14 +103,19 @@ func (sf *SearchFinder) And(i int, key uint64) (result SkipFn) {
 			}
 		}()
 
+		if isCached {
+			goto RESULT
+		}
+
 		if len(records) == 0 {
 			records = sf.recordFns[i].RecFn(EmptySkip)
 		}
 		if oFn != nil && oFn(k) != SkipFalse {
 			return oFn(k)
 		}
-		idx := OpenIndexFile(sf.column())
+
 		if len(records2) == 0 {
+			idx := OpenIndexFile(sf.column())
 			records2 = idx.recordByKeyFn(key)(EmptySkip)
 		}
 		if len(records) == 0 || len(records2) == 0 {
@@ -118,8 +123,8 @@ func (sf *SearchFinder) And(i int, key uint64) (result SkipFn) {
 		}
 		if !isCached {
 			for j := range records {
-				for i := range records2 {
-					if IsEqQRecord(records[j], records2[i]) {
+				for l := range records2 {
+					if IsEqQRecord(records[j], records2[l]) {
 						found[j] = true
 						break
 					}
@@ -128,6 +133,7 @@ func (sf *SearchFinder) And(i int, key uint64) (result SkipFn) {
 			isCached = true
 		}
 
+	RESULT:
 		if found[k] {
 			return SkipFalse
 		}

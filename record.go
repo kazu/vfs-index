@@ -219,9 +219,11 @@ func (r *Record) write(c *Column, w IdxWriter) error {
 			}
 		}
 		io.Close()
-		Log(LOG_DEBUG, "S: record(id=%v, %d) %s(%v)(%d)=%s  written %s \n", r.fileID, r.offset,
-			c.Name, TriKeys(r.StrValue(c))[i], i, debugStr,
-			wPath)
+		if !w.IsNum {
+			Log(LOG_DEBUG, "S: record(id=%v, %d) %s(%v)(%d)=%s  written %s \n", r.fileID, r.offset,
+				c.Name, TriKeys(r.StrValue(c))[i], i, debugStr,
+				wPath)
+		}
 		os.MkdirAll(filepath.Dir(path), os.ModePerm)
 		if w.IsNum && r.Uint64Value(c) == 0 {
 			//spew.Dump(r)
