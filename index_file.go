@@ -531,7 +531,7 @@ func (f *IndexFile) commonFnByKey(key uint64) (result SearchFn) {
 					return fmt.Sprintf("FileId=%+v Offset=%+v", r.FileId().Uint64(), r.Offset().Int64())
 				}
 				Log(LOG_DEBUG, "found add %+v\n", recDump(r))
-				addFn(arg.rec.Value())
+				addFn(r)
 			}
 			return
 		})(skipFn)
