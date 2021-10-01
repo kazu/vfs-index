@@ -4,6 +4,7 @@ import (
 	"context"
 	"sort"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/kazu/vfs-index/expr"
@@ -22,6 +23,8 @@ type SearchCond struct {
 	table  string
 	column string
 	out    chan *Record
+
+	wg *sync.WaitGroup
 }
 
 type mapInf map[string]interface{}
@@ -46,7 +49,13 @@ func (cond *SearchCond) startCol(col string) {
 
 // CancelAndWait ... wait for canceld backgraound routine( mainly merging index)
 func (cond *SearchCond) CancelAndWait() {
-	cond.idxCol.cancelAndWait()
+	go func() {
+		time.Sleep(cond.idx.opt.mergeDuration)
+		cond.idxCol.cancelAndWait()
+	}()
+	if cond.wg != nil {
+		cond.wg.Wait()
+	}
 }
 
 func (cond *SearchCond) ReloadFileList() {
@@ -305,8 +314,9 @@ func (cond *SearchCond) StartMerging() {
 	//c.IsNum = c.IsNumViaIndex()
 	if c.ctx == nil && c.isMergeOnSearch {
 		c.ctx, c.ctxCancel = context.WithTimeout(context.Background(), Opt.mergeDuration)
-		go c.mergeIndex(c.ctx)
-		time.Sleep(20 * time.Millisecond)
+		cond.wg = &sync.WaitGroup{}
+		cond.wg.Add(1)
+		go c.mergeIndex(c.ctx, cond.wg)
 	}
 }
 

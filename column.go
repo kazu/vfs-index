@@ -2,6 +2,7 @@ package vfsindex
 
 import (
 	"context"
+	"sync"
 
 	//"encoding/csv"
 
@@ -148,7 +149,7 @@ func (c *Column) Update(d time.Duration) error {
 	// FIXME
 	ctx, cancel := context.WithTimeout(context.Background(), d)
 	//defer cancel()
-	go c.mergeIndex(ctx)
+	go c.mergeIndex(ctx, nil)
 	time.Sleep(d)
 	cancel()
 	<-c.done
@@ -249,7 +250,7 @@ func (c *Column) getIdxWriter() IdxWriter {
 	return idxWriter
 }
 
-func (c *Column) mergeIndex(ctx context.Context) error {
+func (c *Column) mergeIndex(ctx context.Context, wg *sync.WaitGroup) error {
 
 	var idxWriter IdxWriter
 
@@ -273,8 +274,11 @@ func (c *Column) mergeIndex(ctx context.Context) error {
 			},
 		}
 	}
-	return c.baseMergeIndex(idxWriter, ctx)
-
+	e := c.baseMergeIndex(idxWriter, ctx)
+	if wg != nil {
+		wg.Done()
+	}
+	return e
 }
 func (c *Column) noMergedPat() string {
 	path := ColumnPathWithStatus(c.TableDir(), c.Name, c.IsNum, "*", "*", RECORD_WRITTEN)
@@ -412,6 +416,7 @@ func (c *Column) baseMergeIndex(w IdxWriter, ctx context.Context) error {
 
 	mergedKeyRecords := keyrecords
 	mergedKeyRecords.Base = keyrecords.Base
+	mergedKeyId2Records := map[uint64]*query.RecordList{}
 
 	var firstPath *IndexFile
 	var lastPath *IndexFile
@@ -476,43 +481,12 @@ func (c *Column) baseMergeIndex(w IdxWriter, ctx context.Context) error {
 				Log(LOG_WARN, "mergeIndex(): %s column index file not found\n", f.Path)
 				return nil
 			}
-
-			addedKeyRecord := query.NewKeyRecord()
-			addedKeyRecord.Base = base.NewNoLayer(addedKeyRecord.Base)
-
-			addRecs := query.NewRecordList()
-			addRecs.Base = base.NewNoLayer(addRecs.Base)
-
-			var matchKr *query.KeyRecord
-			var matchError error
-			matchIdx := findKr(mergedKeyRecords, kr)
-
-			if matchIdx < 0 {
-				goto ADD
+			if mergedKeyId2Records[kr.Key().Uint64()] == nil {
+				mergedKeyId2Records[kr.Key().Uint64()] = query.NewRecordList()
 			}
+			cnt := mergedKeyId2Records[kr.Key().Uint64()].Count()
+			mergedKeyId2Records[kr.Key().Uint64()].SetAt(cnt, kr.Value())
 
-			addedKeyRecord.SetKey(query.FromUint64(kr.Key().Uint64()))
-			matchKr, matchError = mergedKeyRecords.At(matchIdx)
-
-			if matchError != nil {
-				Log(LOG_ERROR, "invalid data(index is exsitst. but record not found) ")
-				goto ADD
-			}
-
-			addRecs = matchKr.Records()
-			addRecs.SetAt(matchKr.Records().Count(), kr.Value())
-			addRecs.Flatten()
-			addedKeyRecord.SetRecords(addRecs)
-			mergedKeyRecords.SetAt(matchIdx, addedKeyRecord)
-			goto ENSURE
-
-		ADD:
-			addedKeyRecord.SetKey(query.FromUint64(kr.Key().Uint64()))
-			addRecs.SetAt(0, kr.Value())
-			addedKeyRecord.SetRecords(addRecs)
-			mergedKeyRecords.SetAt(mergedKeyRecords.Count(), addedKeyRecord)
-
-		ENSURE:
 			select {
 			case <-ctx.Done():
 				Log(LOG_WARN, "mergeIndex cancel() last_merge=%s\n", f.Path)
@@ -536,6 +510,28 @@ func (c *Column) baseMergeIndex(w IdxWriter, ctx context.Context) error {
 			deferFn()
 		}
 	}()
+
+	keys := make([]uint64, len(mergedKeyId2Records))
+	for key := range mergedKeyId2Records {
+		keys = append(keys, key)
+	}
+
+	deferFn()
+
+	wBar := Pbar.Add("write merge file", len(keys))
+
+	for i, key := range keys {
+		recs := mergedKeyId2Records[key]
+		recs.Flatten()
+		kr := query.NewKeyRecord()
+		kr.Base = base.NewNoLayer(kr.Base)
+		kr.SetKey(query.FromUint64(key))
+		kr.SetRecords(recs)
+		kr.Flatten()
+		mergedKeyRecords.SetAt(i, kr)
+		wBar.Increment()
+	}
+	wBar.SetTotal(int64(len(keys)), true)
 
 	cnt := keyrecords.Count()
 	if cnt == 0 {
@@ -596,8 +592,6 @@ func (c *Column) baseMergeIndex(w IdxWriter, ctx context.Context) error {
 			}
 		}
 	}
-
-	deferFn()
 
 	Log(LOG_DEBUG, "S: remove merged files count=%d \n", len(noMergeIdxFiles))
 	if Opt.cleanAfterMergeing && len(cleanDirs) > 0 {

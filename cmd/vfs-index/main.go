@@ -161,6 +161,7 @@ var Cmds = []Cmd{
 type CmdOpt struct {
 	name, indexDir, column, table, dir, query, output, info, value         string
 	first, help, nomerge, qstdin, noclean, list, read, write, verbose, cnt bool
+	duration                                                               uint
 	config                                                                 *vfs.ConfigFile
 }
 
@@ -307,6 +308,9 @@ func main() {
 	cmd.Flag.BoolVar(&opt.cnt, "cnt", false, "match count")
 	cmd.Flag.BoolVar(&opt.cnt, "c", false, "match count (shorthand)")
 
+	cmd.Flag.UintVar(&opt.duration, "duration", 60, "timeout second of merge duration")
+	cmd.Flag.UintVar(&opt.duration, "d", 60, "timeout second of merge duration(shorthand)")
+
 	cmd.Flag.Parse(os.Args[2:])
 
 	if !validate(os.Args, opt) {
@@ -349,14 +353,14 @@ func merge(opt CmdOpt) {
 	}
 	opts := []vfs.Option{}
 	opts = append(opts, vfs.ReaderColumn(opt.column))
-	opts = append(opts, vfs.MergeDuration(1*time.Minute))
+	opts = append(opts, vfs.MergeDuration(time.Second*time.Duration(opt.duration)))
 	opts = append(opts, vfs.MergeOnSearch(true))
 	opts = append(opts, vfs.EnableCleanAfterMerge(!opt.noclean))
 
 	sCond := idx.On(opt.table, opts...)
 
 	sCond.StartMerging()
-	time.Sleep(1 * time.Minute)
+	//time.Sleep(time.Second * time.Duration(opt.duration))
 	sCond.CancelAndWait()
 }
 
