@@ -794,8 +794,7 @@ func (f *IndexFile) FindByKey(key uint64) (result []*IndexFile) {
 		return
 	}
 
-	return []*IndexFile{f.findAllFromMergeIdx(key)}
-
+	return f.findAllFromMergeIdxs(key)
 }
 
 func (f *IndexFile) FindNearByKey(key uint64, less bool) (results []*IndexFile) {
@@ -880,6 +879,14 @@ func (f *IndexFile) FindNearByKey(key uint64, less bool) (results []*IndexFile) 
 }
 
 func (f *IndexFile) findAllFromMergeIdx(key uint64) *IndexFile {
+	idxs := f.findAllFromMergeIdxs(key)
+	if len(idxs) == 0 {
+		return nil
+	}
+	return idxs[0]
+
+}
+func (f *IndexFile) findAllFromMergeIdxs(key uint64) (result []*IndexFile) {
 
 	c := f.c
 
@@ -897,10 +904,41 @@ func (f *IndexFile) findAllFromMergeIdx(key uint64) *IndexFile {
 		key  uint64
 		file *IndexFile
 	}
+	var idx int
 
-	// low := KeyFile{}
-	// high := KeyFile{}
+	if !Opt.useBsearch {
+		goto NOT_USE_BSEARCH
+	}
 
+	idx = sort.Search(len(names), func(i int) bool {
+		f := NewIndexFile(f.c, filepath.Join(f.Path, names[i]))
+		f.Init()
+		return f.IsType(IdxFileType_Merge) && key >= f.IdxInfo().first && key <= f.IdxInfo().last
+	})
+	result = make([]*IndexFile, 0, len(names)-idx)
+
+	for i := idx; i < len(names); i++ {
+		f := NewIndexFile(f.c, filepath.Join(f.Path, names[i]))
+		f.Init()
+		if f.IsType(IdxFileType_NoComplete) {
+			continue
+		}
+		if f.IsType(IdxFileType_Merge) {
+			if key >= f.IdxInfo().first && key <= f.IdxInfo().last {
+				result = append(result, f)
+				continue
+			}
+			if key > f.IdxInfo().last {
+				break
+			}
+		}
+	}
+
+	return
+
+NOT_USE_BSEARCH:
+
+	// TODO: must binary-search. multiple result
 	for _, name := range names {
 		f := NewIndexFile(f.c, filepath.Join(f.Path, name))
 		f.Init()
@@ -909,22 +947,8 @@ func (f *IndexFile) findAllFromMergeIdx(key uint64) *IndexFile {
 			continue
 		}
 		if f.IsType(IdxFileType_Merge) {
-			// if f.IdxInfo().first < key && low.key < f.IdxInfo().first {
-			// 	low.key = f.IdxInfo().first
-			// 	low.file = f
-			// }
-
-			// if f.IdxInfo().last > key && high.key > f.IdxInfo().last {
-			// 	high.key = f.IdxInfo().last
-			// 	high.file = f
-			// }
-
-			// if low.file == f && high.file == f {
-			// 	return f
-			// }
-
 			if key >= f.IdxInfo().first && key <= f.IdxInfo().last {
-				return f
+				return []*IndexFile{f}
 			}
 		}
 	}

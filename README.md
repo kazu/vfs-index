@@ -143,3 +143,4 @@ sCond.CancelAndWait()
 - [x] csv support 
 - [ ] msgpack support
 - [x] support compression data (  lz4(?) )
+- [x] binary search mergedindex file

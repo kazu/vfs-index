@@ -19,11 +19,22 @@ const (
 )
 
 type GetColumn func() *Column
+
+// SearchFinder ... FInder for query search
 type SearchFinder struct {
 	column    GetColumn
 	recordFns []SearchFn
 	skipdFns  []SkipFn
 	keys      []uint64
+	writer    func(c *Column, qrecs []*query.Record) interface{}
+	useStats  bool
+	stats     []*SearchFinderStat
+}
+
+// SearchFinderStat ... stats for SearchFinder
+type SearchFinderStat struct {
+	Name    string
+	elapsed time.Duration
 }
 
 func EmptySkip(i int) SkipType {
@@ -101,8 +112,8 @@ func (sf *SearchFinder) AndWithColumn(i int, key uint64, col *Column) (result Sk
 			}
 			Log(LOG_DEBUG, "eval AND(%d,%s) type=%s dur=%s\n", k, DecodeTri(key), r, time.Now().Sub(s))
 			if len(records) > k && records[k] != nil {
-				out := ResultOutput("")
-				data := out(sf.column(), []*query.Record{records[k]}).([]interface{})[0].(map[string]interface{})
+				ResultOutput("")
+				data := sf.writer(sf.column(), []*query.Record{records[k]}).([]interface{})[0].(map[string]interface{})
 				Log(LOG_DEBUG, "\traw=A%s\n", data[sf.column().Name])
 			}
 		}()
@@ -156,24 +167,44 @@ func MesureElapsed() func(string) string {
 	}
 }
 
-func (sf *SearchFinder) All(opts ...ResultOpt) interface{} {
+func MesureElapsedToStat() func(string) *SearchFinderStat {
 
-	elapsed := MesureElapsed()
+	s := time.Now()
 
-	opts = append(opts, ResultOutput(""))
-
-	recs := sf.Records()
-	if LogIsDebug() {
-		Log(LOG_DEBUG, "SearchFinder.All():Records() %s\n", elapsed("%s"))
+	return func(f string) *SearchFinderStat {
+		return &SearchFinderStat{
+			Name:    f,
+			elapsed: time.Now().Sub(s),
+		}
 	}
+}
+
+func (sf *SearchFinder) mergeOpts(opts ...SearchFinderOpt) {
+	for _, opt := range opts {
+		opt(sf)
+	}
+}
+
+func (sf *SearchFinder) All(opts ...SearchFinderOpt) interface{} {
+
+	ResultOutput("")(sf)
+	sf.mergeOpts(opts...)
+
+	elapsed := MesureElapsedToStat()
+	recs := sf.Records()
+
+	if sf.useStats {
+		if sf.stats == nil {
+			sf.stats = []*SearchFinderStat{}
+		}
+		sf.stats = append(sf.stats, elapsed("SearchFinder.All(): Records()"))
+	}
+
 	loncha.Uniq(&recs, func(i int) interface{} {
 		return fmt.Sprintf("0x%x0x%x", recs[i].FileId().Uint64(), recs[i].Offset().Int64())
 	})
-	// for i := range recs {
-	// 	result = append(result, opts[0](sf.column(), recs[i]))
-	// }
 
-	return opts[0](sf.column(), recs)
+	return sf.writer(sf.column(), recs)
 
 }
 func (sf *SearchFinder) Records() (recs []*query.Record) {
@@ -193,23 +224,24 @@ func (sf *SearchFinder) Count() (cnt int) {
 	return
 }
 
-func (sf *SearchFinder) First(opts ...ResultOpt) interface{} {
+func (sf *SearchFinder) First(opts ...SearchFinderOpt) interface{} {
 
-	opts = append(opts, ResultOutput(""))
+	//opts = append(opts, ResultOutput(""))
+	sf.mergeOpts(opts...)
 
 	if sf.Count() == 0 {
 		return nil
 	}
 
 	recs := sf.recordFns[0].RecFn(sf.skipdFns[0])
-	return opts[0](sf.column(), []*query.Record{recs[0]})
+	return sf.writer(sf.column(), []*query.Record{recs[0]})
 
 }
 
-func (sf *SearchFinder) Last(opts ...ResultOpt) interface{} {
+func (sf *SearchFinder) Last(opts ...SearchFinderOpt) interface{} {
 
-	opts = append(opts, ResultOutput(""))
-
+	ResultOutput("")
+	sf.mergeOpts(opts...)
 	if sf.Count() == 0 {
 		return nil
 	}
@@ -217,5 +249,49 @@ func (sf *SearchFinder) Last(opts ...ResultOpt) interface{} {
 	idx := len(sf.recordFns) - 1
 	recs := sf.recordFns[idx].RecFn(sf.skipdFns[idx])
 
-	return opts[0](sf.column(), []*query.Record{recs[len(recs)-1]})
+	return sf.writer(sf.column(), []*query.Record{recs[len(recs)-1]})
+}
+
+func (sf *SearchFinder) Stats() []*SearchFinderStat {
+	return sf.stats
+}
+
+// SearchFinderOpt ... Option for SearchFinder
+type SearchFinderOpt func(*SearchFinder)
+
+// OptQueryStat ... enable stats option in SearchFinder
+func OptQueryStat(t bool) SearchFinderOpt {
+
+	return func(sf *SearchFinder) {
+		sf.useStats = t
+	}
+}
+
+// ResultOutput ... output option for SearchFinder
+func ResultOutput(name string) SearchFinderOpt {
+
+	return func(sf *SearchFinder) {
+		sf.writer = func(c *Column, qrecs []*query.Record) interface{} {
+			result := make([]interface{}, len(qrecs))
+			for i, qrec := range qrecs {
+				rec := &Record{
+					fileID: qrec.FileId().Uint64(),
+					offset: qrec.Offset().Int64(),
+					size:   qrec.Size().Int64(),
+				}
+				rec.caching(c)
+				result[i] = rec.cache
+			}
+			if len(name) == 0 {
+				return result
+			}
+
+			if name == "json" || name == "csv" {
+				enc, _ := GetDecoder("." + name)
+				raw, _ := enc.Encoder(result)
+				return string(raw)
+			}
+			return result
+		}
+	}
 }

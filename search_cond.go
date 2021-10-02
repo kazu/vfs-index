@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/kazu/vfs-index/expr"
-	"github.com/kazu/vfs-index/query"
 )
 
 // SearchCond .. saerch condition object.
@@ -317,35 +316,6 @@ func (cond *SearchCond) StartMerging() {
 		cond.wg = &sync.WaitGroup{}
 		cond.wg.Add(1)
 		go c.mergeIndex(c.ctx, cond.wg)
-	}
-}
-
-type ResultOpt func(*Column, []*query.Record) interface{}
-
-func ResultOutput(name string) ResultOpt {
-
-	return func(c *Column, qrecs []*query.Record) interface{} {
-
-		result := make([]interface{}, len(qrecs))
-		for i, qrec := range qrecs {
-			rec := &Record{
-				fileID: qrec.FileId().Uint64(),
-				offset: qrec.Offset().Int64(),
-				size:   qrec.Size().Int64(),
-			}
-			rec.caching(c)
-			result[i] = rec.cache
-		}
-		if len(name) == 0 {
-			return result
-		}
-
-		if name == "json" || name == "csv" {
-			enc, _ := GetDecoder("." + name)
-			raw, _ := enc.Encoder(result)
-			return string(raw)
-		}
-		return result
 	}
 }
 
