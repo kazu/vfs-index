@@ -595,14 +595,19 @@ func (f *IndexFile) recordInfoByKeyFn(key uint64, fn InfoFn) ResultFn {
 				fn(RecordInfoArg{false, idx.KeyRecord(), nil, skipCur, skipFn})
 				skipCur++
 			} else if idx.IsType(IdxFileType_Merge) {
-				kr := idx.KeyRecords().Find(func(kr *query.KeyRecord) bool {
-					Log(LOG_DEBUG, "KeyRecords().Find() kt.key=%+v(%s) key=%+v(%s)\n",
-						kr.Key().Uint64(), DecodeTri(kr.Key().Uint64()),
-						key, DecodeTri(key))
-					Log(LOG_DEBUG, "  count=%d\n", kr.Records().Count())
-					return kr.Key().Uint64() == key
-				})
-				if kr.CommonNode == nil {
+				var kr *query.KeyRecord
+				kr = nil
+				if Opt.useBsearch {
+					kr = BsearchInKeyRecord(key, idx.KeyRecords().Search(func(q *query.KeyRecord) bool {
+						return q.Key().Uint64() >= key
+					}))
+				} else {
+					kr = idx.KeyRecords().Find(func(kr *query.KeyRecord) bool {
+						return kr.Key().Uint64() == key
+					})
+				}
+
+				if kr == nil || kr.CommonNode == nil {
 					skipCur++
 					continue
 				}

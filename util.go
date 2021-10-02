@@ -671,3 +671,12 @@ func (b *BufWriterIO) Flush() (e error) {
 	}
 	return
 }
+
+func BsearchInKeyRecord(key uint64, kr *query.KeyRecord) *query.KeyRecord {
+
+	if kr.Key().Uint64() == key && kr.CommonNode != nil {
+		return kr
+	}
+
+	return nil
+}

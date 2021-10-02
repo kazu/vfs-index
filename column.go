@@ -511,7 +511,7 @@ func (c *Column) baseMergeIndex(w IdxWriter, ctx context.Context) error {
 		}
 	}()
 
-	keys := make([]uint64, len(mergedKeyId2Records))
+	keys := make([]uint64, 0, len(mergedKeyId2Records))
 	for key := range mergedKeyId2Records {
 		keys = append(keys, key)
 	}

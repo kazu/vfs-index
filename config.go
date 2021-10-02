@@ -5,6 +5,7 @@ import "time"
 var Opt optionState = optionState{
 	mergeDuration:      1 * time.Minute,
 	cleanAfterMergeing: true,
+	useBsearch:         true,
 }
 
 type optionState struct {
@@ -16,6 +17,7 @@ type optionState struct {
 	mergeDuration      time.Duration
 	customDecoders     []Decoder
 	cleanAfterMergeing bool
+	useBsearch         bool
 }
 
 //type ReaderOpt map[string]string
@@ -78,5 +80,12 @@ func MergeDuration(d time.Duration) Option {
 func EnableCleanAfterMerge(t bool) Option {
 	return func(opt *optionState) {
 		opt.cleanAfterMergeing = t
+	}
+}
+
+func UseBsearch(t bool) Option {
+	return func(opt *optionState) {
+		opt.useBsearch = t
+		Opt.useBsearch = t
 	}
 }

@@ -157,11 +157,22 @@ func Test_SearchQueryString(t *testing.T) {
 	qstr := `title.search("鬼滅の")`
 	q, _ := expr.GetExpr(qstr)
 
-	sCond := idx.On("test", vfs.ReaderColumn(q.Column), vfs.Output(vfs.MapInfOutput))
+	sCond := idx.On("test", vfs.ReaderColumn(q.Column), vfs.Output(vfs.MapInfOutput), vfs.UseBsearch(false))
+
+	n := time.Now()
+
 	results := sCond.Query(qstr).All().([]interface{})
+	elapsed1 := time.Now().Sub(n)
+
+	sCond = idx.On("test", vfs.ReaderColumn(q.Column), vfs.Output(vfs.MapInfOutput), vfs.UseBsearch(true))
+	n = time.Now()
+	results2 := sCond.Query(qstr).All().([]interface{})
+	elapsed2 := time.Now().Sub(n)
 
 	assert.NoError(t, e)
 	assert.True(t, 0 < len(results))
+	assert.True(t, elapsed2 < elapsed1)
+	assert.True(t, len(results) == len(results2))
 	sCond.CancelAndWait()
 }
 
