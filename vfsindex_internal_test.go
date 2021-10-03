@@ -328,6 +328,43 @@ func Test_IndexFile_Select(t *testing.T) {
 	fmt.Printf("Select2: elapse %s\n", time.Now().Sub(s))
 	assert.Error(t, e)
 	assert.Equal(t, 100, len(matches))
+
+	matches = []*IndexFile{}
+	e = f.Select(
+		OptAsc(true),
+		OptRange(0, 0x4500582664),
+		OptOnly(IdxFileType_Write),
+		OptCcondFn(func(f *IndexFile) CondType {
+			if f.Ftype == IdxFileType_None {
+				return CondSkip
+			}
+
+			if f.IsType(IdxFileType_NoComplete) {
+				return CondSkip
+			}
+			fmt.Printf("cond %s\n", f.Path)
+			if f.IsType(IdxFileType_Dir) {
+				return CondLazy
+			}
+
+			if f.IsType(IdxFileType_Merge) {
+				return CondSkip
+			}
+			return CondTrue
+		}),
+		OptTraverse(func(f *IndexFile) error {
+			fmt.Printf("match %s\n", f.Path)
+			matches = append(matches, f)
+			if len(matches) == 100 {
+				return ErrStopTraverse
+			}
+			return nil
+		}),
+	)
+	fmt.Printf("Select3: elapse %s\n", time.Now().Sub(s))
+	assert.Error(t, e)
+	assert.Equal(t, 100, len(matches))
+
 }
 
 func Test_Recrod_ToFbs(t *testing.T) {

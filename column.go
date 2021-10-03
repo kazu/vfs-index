@@ -448,6 +448,7 @@ func (c *Column) baseMergeIndex(w IdxWriter, ctx context.Context) error {
 
 	finder.Select(
 		OptAsc(true),
+		OptOnly(IdxFileType_Write),
 		OptCcondFn(func(f *IndexFile) CondType {
 			if f.Ftype == IdxFileType_None {
 				return CondSkip

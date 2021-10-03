@@ -41,6 +41,12 @@ type SelectOpt struct {
 	last          uint64
 	enableRange   bool
 	enableBSearch bool
+	onlyType      SelectOptType
+}
+
+type SelectOptType struct {
+	use bool
+	t   IndexFileType
 }
 
 // SelectOption ... for setting option parameter in Select()
@@ -99,6 +105,7 @@ func DefaultSelectOpt() SelectOpt {
 	return SelectOpt{
 		enableRange:   false,
 		enableBSearch: false,
+		onlyType:      SelectOptType{use: false},
 	}
 }
 
@@ -130,6 +137,14 @@ func OptRange(start, last uint64) SelectOption {
 		opt.start = start
 		opt.last = last
 		opt.enableRange = true
+	}
+}
+
+func OptOnly(t IndexFileType) SelectOption {
+	return func(opt *SelectOpt) {
+		opt.onlyType.use = true
+		opt.onlyType.t = t
+
 	}
 }
 
@@ -194,6 +209,29 @@ func readDirNames(dirname string) ([]string, error) {
 	}
 	sort.Strings(names)
 	return names, nil
+}
+
+func dirnamesByType(dirname string, t IndexFileType) (names []string, e error) {
+
+	switch t {
+	case IdxFileType_Write:
+		names, e = filepath.Glob(filepath.Join(dirname, "*/*/*/*.*.idx.*-*.*"))
+		goto REMOVE_REL
+	case IdxFileType_Merge:
+		names, e = filepath.Glob(filepath.Join(dirname, "*.merged.*"))
+		goto REMOVE_REL
+	default:
+		names, e = readDirNames(dirname)
+		goto RESULT
+	}
+
+REMOVE_REL:
+	for i, _ := range names {
+		names[i], _ = filepath.Rel(dirname, names[i])
+	}
+
+RESULT:
+	return
 }
 
 func OpenIndexFile(c *Column) (idxFile *IndexFile) {
@@ -279,7 +317,12 @@ func (f *IndexFile) beforeSelect(opt *SelectOpt) (names []string, k2rel func(uin
 	//opt := DefaultSelectOpt()
 	// opt.merge(opts)
 
-	names, err = readDirNames(f.Path)
+	if opt.onlyType.use {
+		names, err = dirnamesByType(f.Path, opt.onlyType.t)
+	} else {
+		names, err = readDirNames(f.Path)
+	}
+
 	names = sortAlphabet(names)
 	if !opt.asc {
 		sort.SliceStable(names, func(i, j int) bool { return i > j })
