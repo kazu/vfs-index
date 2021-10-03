@@ -34,12 +34,13 @@ type IndexFile struct {
 
 // SelectOpt ... sarch options for select.
 type SelectOpt struct {
-	asc         bool
-	cond        CondFn
-	traverse    TraverseFn
-	start       uint64
-	last        uint64
-	enableRange bool
+	asc           bool
+	cond          CondFn
+	traverse      TraverseFn
+	start         uint64
+	last          uint64
+	enableRange   bool
+	enableBSearch bool
 }
 
 // SelectOption ... for setting option parameter in Select()
@@ -91,6 +92,15 @@ const (
 	CondFalse
 	CondLazy
 )
+
+// DefaultSelectOpt ... return default of SelectOption
+func DefaultSelectOpt() SelectOpt {
+
+	return SelectOpt{
+		enableRange:   false,
+		enableBSearch: false,
+	}
+}
 
 // OptCcondFn ... set option of CondFn in Select()
 func OptCcondFn(c CondFn) SelectOption {
@@ -265,11 +275,11 @@ func (f *IndexFile) Init() {
 	}
 }
 
-func (f *IndexFile) Select(opts ...SelectOption) (err error) {
-	opt := SelectOpt{enableRange: false}
-	opt.merge(opts)
+func (f *IndexFile) beforeSelect(opt *SelectOpt) (names []string, k2rel func(uint64) string, err error) {
+	//opt := DefaultSelectOpt()
+	// opt.merge(opts)
 
-	names, err := readDirNames(f.Path)
+	names, err = readDirNames(f.Path)
 	names = sortAlphabet(names)
 	if !opt.asc {
 		sort.SliceStable(names, func(i, j int) bool { return i > j })
@@ -287,10 +297,51 @@ func (f *IndexFile) Select(opts ...SelectOption) (err error) {
 			return LessEqString(k2rel(opt.start), path) && LessEqString(path, k2rel(opt.last))
 		})
 	}
+	return
+}
+
+func (f *IndexFile) idxWithBsearch(names []string, opt *SelectOpt) (idx int) {
+
+	idx = sort.Search(len(names), func(i int) bool {
+		name := names[i]
+		f := NewIndexFile(f.c, filepath.Join(f.Path, name))
+		f.Init()
+		switch opt.cond(f) {
+		case CondSkip, CondFalse:
+			return false
+		case CondLazy:
+			cnames, _, _ := f.beforeSelect(opt)
+			if f.idxWithBsearch(cnames, opt) > -1 {
+				return true
+			}
+			return false
+		case CondTrue:
+			return true
+		}
+		return false
+	})
+	if idx >= len(names) {
+		return -1
+	}
+	return
+}
+
+func (f *IndexFile) Select(opts ...SelectOption) (err error) {
+	opt := DefaultSelectOpt()
+	opt.merge(opts)
+
+	names, k2rel, err := f.beforeSelect(&opt)
+	_, _, _ = names, k2rel, err
+
+	idx := 0
+	if opt.enableBSearch && opt.asc {
+		idx = f.idxWithBsearch(names, &opt)
+	}
 
 	afters := []*IndexFile{}
 
-	for _, name := range names {
+	for i := idx; i < len(names); i++ {
+		name := names[i]
 		f := NewIndexFile(f.c, filepath.Join(f.Path, name))
 		f.Init()
 		switch opt.cond(f) {
