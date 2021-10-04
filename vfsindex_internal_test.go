@@ -298,6 +298,7 @@ func Test_IndexFile_Select(t *testing.T) {
 	e = f.Select(
 		OptAsc(true),
 		OptRange(0, 0x4500582664),
+		//OptRange(0x0b00582664, 0x4500582664),
 		OptCcondFn(func(f *IndexFile) CondType {
 			if f.Ftype == IdxFileType_None {
 				return CondSkip

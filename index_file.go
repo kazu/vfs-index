@@ -329,16 +329,32 @@ func (f *IndexFile) beforeSelect(opt *SelectOpt) (names []string, k2rel func(uin
 	}
 
 	if opt.enableRange {
-		k2rel := func(key uint64) string {
+		k2rel = func(key uint64) string {
 			path := f.c.key2Path(key, RECORD_WRITTEN)
 			ret, _ := filepath.Rel(filepath.Join(Opt.rootDir, f.c.TableDir()), path)
 			return ret
 		}
+		relstart := k2rel(opt.start)
+		rellast := k2rel(opt.last)
 
-		loncha.Filter(&names, func(i int) bool {
+		sidx := sort.Search(len(names), func(i int) bool {
 			path, _ := filepath.Rel(filepath.Join(Opt.rootDir, f.c.TableDir()), filepath.Join(f.Path, names[i]))
-			return LessEqString(k2rel(opt.start), path) && LessEqString(path, k2rel(opt.last))
+			return LessEqString(relstart, path)
 		})
+		_ = sidx
+		lidx := sort.Search(len(names), func(i int) bool {
+			path, _ := filepath.Rel(filepath.Join(Opt.rootDir, f.c.TableDir()), filepath.Join(f.Path, names[i]))
+			return LessEqString(rellast, path)
+		})
+		if sidx < 0 || sidx == len(names) {
+			names = []string{}
+			return
+		}
+		if lidx < 0 || lidx == len(names) {
+			lidx = len(names) - 1
+		}
+		names = names[sidx:lidx]
+
 	}
 	return
 }
