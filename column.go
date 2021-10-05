@@ -15,6 +15,7 @@ import (
 
 	"github.com/kazu/fbshelper/query/base"
 	"github.com/kazu/vfs-index/query"
+	"github.com/vbauerster/mpb/v5"
 
 	"github.com/kazu/loncha"
 	"github.com/kazu/vfs-index/vfs_schema"
@@ -145,7 +146,6 @@ func (c *Column) Update(d time.Duration) error {
 		}
 	}
 	c.WriteDirties()
-	//Log(LOG_WARN, "Called WriteDirtues \n")
 	// FIXME
 	ctx, cancel := context.WithTimeout(context.Background(), d)
 	//defer cancel()
@@ -177,10 +177,13 @@ func (c *Column) WriteDirties() {
 	ch := make(chan int, Opt.cntConcurrent*4)
 	chDone := make(chan bool, Opt.cntConcurrent)
 
-	//bar := progressbar.Default(int64(len(c.Dirties)))
-	bar := Pbar.Add("write index...", len(c.Dirties))
+	var bar *mpb.Bar
+	bar = nil
+	cntDirty := len(c.Dirties)
 	defer func() {
-		bar.SetTotal(bar.Current(), true)
+		if bar != nil {
+			bar.SetTotal(bar.Current(), true)
+		}
 	}()
 
 	writeRecord := func(ch chan int) {
@@ -193,6 +196,9 @@ func (c *Column) WriteDirties() {
 			e := r.Write(c)
 			if e == nil {
 				c.Dirties[i] = nil
+				if bar == nil {
+					bar = Pbar.Add("write index...", cntDirty)
+				}
 				bar.Increment()
 			}
 		}
@@ -253,7 +259,6 @@ func (c *Column) getIdxWriter() IdxWriter {
 func (c *Column) mergeIndex(ctx context.Context, wg *sync.WaitGroup) error {
 
 	var idxWriter IdxWriter
-
 	if c.validateIndexType() {
 		c.IsNum = true
 	}

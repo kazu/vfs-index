@@ -134,7 +134,6 @@ func Test_SearchStringAll(t *testing.T) {
 	//result_id, ok := results[0]["id"].(uint64)
 	//idx.Cols["name"].CancelAndWait()
 	sCond.CancelAndWait()
-	fmt.Printf("cnt=%d  %v\n", len(matches2), matches2)
 	assert.NoError(t, e)
 	assert.True(t, 0 < len(matches2))
 
@@ -237,7 +236,6 @@ func TestUtf8Rune(t *testing.T) {
 
 	a := []rune(str)
 
-	fmt.Printf("a=%c 0x%4x %#U size=%d %v\n", a[0], a[0], a[0], len(string(a[0:3])), a[0:3])
 	assert.NotNil(t, a)
 }
 
@@ -247,14 +245,6 @@ func TestEncodeTri(t *testing.T) {
 	vals := vfs.EncodeTri(str)
 	runes := []rune(str)
 	assert.Equal(t, len(runes)-2, len(vals))
-
-	var a int64
-	a = -1
-
-	b := fmt.Sprintf("%x\n", uint64(a))
-
-	l := len(b)
-	fmt.Println(l)
 
 }
 
@@ -322,7 +312,6 @@ func Test_WriteAt_BufWriterIO(t *testing.T) {
 
 	for i := 0; i < 8000; i++ {
 		l := i % 10
-		//b.Write([]byte(fmt.Sprintf("%d", l)))
 		b.WriteAt([]byte(fmt.Sprintf("%d", l)), int64(i+10))
 	}
 	b.Flush()
