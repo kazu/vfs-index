@@ -1004,7 +1004,11 @@ func (f *IndexFile) findAllFromMergeIdxs(key uint64) (result []*IndexFile) {
 		return nil //ErrNotIndexDir
 	}
 
-	names, err := readDirNames(f.Path)
+	names, err := dirnamesByType(f.Path, IdxFileType_Merge)
+	loncha.Filter(&names, func(i int) bool {
+		return c.Name == names[i][0:len(c.Name)]
+	})
+
 	if err != nil {
 		return nil
 	}

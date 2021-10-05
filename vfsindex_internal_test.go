@@ -3,7 +3,9 @@ package vfsindex
 import (
 	"context"
 	"fmt"
+	"io"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -29,6 +31,16 @@ const DataDir string = "testdata/data"
 const TestRoot string = "testdata"
 const IdxNoInterDir string = "testdata/vfs"
 
+const fileIDOfidxInter string = "17dCuo_6yhPpp1wq3y6mZCTnIB50enZ45"
+
+func donwloadFromgdrive(id, dst string) {
+
+	resp, _ := http.Get("https://drive.google.com/uc?export=download&id=" + id)
+	w, _ := os.Create(dst)
+	io.Copy(w, resp.Body)
+	w.Close()
+
+}
 func setup() {
 
 	CurrentLogLoevel = LOG_WARN
@@ -36,6 +48,10 @@ func setup() {
 		//os.RemoveAll(IdxDir)
 		return
 	}
+	if !FileExist("testdata/idx-inter.tar.gz") {
+		donwloadFromgdrive(fileIDOfidxInter, "testdata/idx.tar.gz")
+	}
+
 	Untar("testdata/idx-inter.tar.gz", "testdata")
 }
 

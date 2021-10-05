@@ -2,7 +2,9 @@ package vfsindex_test
 
 import (
 	"fmt"
+	"io"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"testing"
 	"time"
@@ -20,12 +22,23 @@ const TestRoot string = "testdata"
 
 const IdxInterDir string = "testdata/vfs-inter"
 
+const fileIdOfidx string = "16HSrgkXLGP27-TisHK3U0poQRvIPsxxN"
+
 func DefaultOption() vfs.Option {
 	return vfs.RootDir(IdxDir)
 }
 
 func OpenIndexer() (*vfs.Indexer, error) {
 	return vfs.Open(DataDir, DefaultOption(), vfs.MergeDuration(10*time.Second))
+
+}
+
+func donwloadFromgdrive(id, dst string) {
+
+	resp, _ := http.Get("https://drive.google.com/uc?export=download&id=" + id)
+	w, _ := os.Create(dst)
+	io.Copy(w, resp.Body)
+	w.Close()
 
 }
 
@@ -36,6 +49,10 @@ func setup() {
 		//os.RemoveAll(IdxDir)
 		return
 	}
+	if !vfs.FileExist("testdata/idx.tar.gz") {
+		donwloadFromgdrive(fileIdOfidx, "testdata/idx.tar.gz")
+	}
+
 	vfs.Untar("testdata/idx.tar.gz", "testdata")
 }
 
