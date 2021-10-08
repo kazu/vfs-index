@@ -32,6 +32,7 @@ const (
 	RECORD_MERGED
 )
 
+// Column undocumented
 type Column struct {
 	Table   string
 	Name    string
@@ -48,6 +49,7 @@ type Column struct {
 	isMergeOnSearch bool
 }
 
+// ColumnPath undocumented
 func ColumnPath(tdir, col string, isNum bool) string {
 	if isNum {
 		return filepath.Join(Opt.rootDir, tdir, col+".num.idx")
@@ -57,12 +59,14 @@ func ColumnPath(tdir, col string, isNum bool) string {
 	return filepath.Join(Opt.rootDir, tdir, col+".gram.idx")
 }
 
+// JoinExt undocumented
 func JoinExt(s ...string) string {
 
 	return strings.Join(s, ".")
 
 }
 
+// AddingDir undocumented
 func AddingDir(s string, n int) string {
 
 	if s == "*" {
@@ -85,6 +89,7 @@ func AddingDir(s string, n int) string {
 	return b.String()
 }
 
+// ColumnPathWithStatus undocumented
 func ColumnPathWithStatus(tdir, col string, isNum bool, s, e string, status byte) string {
 	if status == RECORD_WRITING {
 
@@ -116,6 +121,7 @@ func (idx *Indexer) openCol(flist *FileList, table, col string) *Column {
 	return NewColumn(flist, table, col)
 }
 
+// NewColumn undocumented
 func NewColumn(flist *FileList, table, col string) *Column {
 	//if _, e := os.Stat(ColumnPath(tableDir)); os.IsNotExist(e) {
 	c := &Column{
@@ -129,6 +135,7 @@ func NewColumn(flist *FileList, table, col string) *Column {
 	return c
 }
 
+// Update undocumented
 func (c *Column) Update(d time.Duration) error {
 
 	idxDir := filepath.Join(Opt.rootDir, c.Table)
@@ -168,6 +175,7 @@ func (c *Column) updateFile(f *File) {
 	}
 }
 
+// WriteDirties undocumented
 func (c *Column) WriteDirties() {
 	if Opt.cntConcurrent < 1 {
 		Opt.cntConcurrent = 1
@@ -279,7 +287,7 @@ func (c *Column) mergeIndex(ctx context.Context, wg *sync.WaitGroup) error {
 			},
 		}
 	}
-	e := c.baseMergeIndex(idxWriter, ctx)
+	e := c.baseMergeIndex(ctx, idxWriter)
 	if wg != nil {
 		wg.Done()
 	}
@@ -351,6 +359,7 @@ func idxPath2InfoMerge(idxpath string) (fileID uint64, offset int64, first uint6
 
 }
 
+// IndexPathInfo undocumented
 type IndexPathInfo struct {
 	fileID uint64
 	offset int64
@@ -358,6 +367,7 @@ type IndexPathInfo struct {
 	last   uint64
 }
 
+// NewIndexInfo undocumented
 func NewIndexInfo(fileID uint64, offset int64, first uint64, last uint64) IndexPathInfo {
 	return IndexPathInfo{
 		fileID: fileID,
@@ -395,11 +405,12 @@ func (c *Column) validateIndexType() bool {
 
 }
 
+// Path undocumented
 func (c *Column) Path() string {
 	return ColumnPath(c.TableDir(), c.Name, c.IsNum)
 }
 
-func (c *Column) baseMergeIndex(w IdxWriter, ctx context.Context) error {
+func (c *Column) baseMergeIndex(ctx context.Context, w IdxWriter) error {
 
 	c.done = make(chan bool, 2)
 	defer func() {
@@ -517,27 +528,9 @@ func (c *Column) baseMergeIndex(w IdxWriter, ctx context.Context) error {
 		}
 	}()
 
-	keys := make([]uint64, 0, len(mergedKeyId2Records))
-	for key := range mergedKeyId2Records {
-		keys = append(keys, key)
-	}
-
 	deferFn()
 
-	wBar := Pbar.Add("write merge file", len(keys))
-
-	for i, key := range keys {
-		recs := mergedKeyId2Records[key]
-		recs.Flatten()
-		kr := query.NewKeyRecord()
-		kr.Base = base.NewNoLayer(kr.Base)
-		kr.SetKey(query.FromUint64(key))
-		kr.SetRecords(recs)
-		kr.Flatten()
-		mergedKeyRecords.SetAt(i, kr)
-		wBar.Increment()
-	}
-	wBar.SetTotal(int64(len(keys)), true)
+	id2RecordsToKeyRecordList(mergedKeyRecords, mergedKeyId2Records)
 
 	cnt := keyrecords.Count()
 	if cnt == 0 {
@@ -545,7 +538,6 @@ func (c *Column) baseMergeIndex(w IdxWriter, ctx context.Context) error {
 		return nil
 	}
 
-	mergedKeyRecords.Flatten()
 	idxNum.SetIndexes(mergedKeyRecords)
 
 	root.SetIndex(&query.Index{CommonNode: idxNum.CommonNode})
@@ -606,6 +598,7 @@ func (c *Column) baseMergeIndex(w IdxWriter, ctx context.Context) error {
 	return nil
 }
 
+// RecordEqInt undocumented
 func (c *Column) RecordEqInt(v int) (record *Record) {
 
 	path := ColumnPathWithStatus(c.TableDir(), c.Name, true, toFname(uint64(v)), toFname(uint64(v)), RECORD_WRITTEN)
@@ -620,6 +613,7 @@ func (c *Column) RecordEqInt(v int) (record *Record) {
 	return nil
 }
 
+// TableDir undocumented
 func (c *Column) TableDir() string {
 
 	return filepath.Join(c.Dir, c.Table)
@@ -635,10 +629,12 @@ func (c *Column) key2Path(key uint64, state byte) string {
 
 }
 
+// CleanDirs undocumented
 func (c *Column) CleanDirs() (cnt int) {
 	return c.cleanDirs(nil)
 }
 
+// CleanDirTest undocumented
 func (c *Column) CleanDirTest(mode int) {
 
 	cdir := make([]string, 0, 1)
@@ -673,11 +669,13 @@ func (c *Column) cleanDirs(idirs []string) (cnt int) {
 
 }
 
+// ParentDirs undocumented
 type ParentDirs struct {
 	m   map[string]bool
 	min int
 }
 
+// NewParentDirs undocumented
 func NewParentDirs(base string, dirs []string) (pdirs ParentDirs) {
 
 	allparent := func(odir string) (dirs []string) {
@@ -706,6 +704,7 @@ func NewParentDirs(base string, dirs []string) (pdirs ParentDirs) {
 	return
 }
 
+// Has undocumented
 func (pdir ParentDirs) Has(dir string) bool {
 	return pdir.m[dir]
 }
@@ -767,22 +766,26 @@ func (c *Column) emptyDirs(idirs []string) []string {
 	return rDirs
 }
 
+// RecordPos undocumented
 type RecordPos struct {
 	fileID uint64
 	offset int64
 }
 
+// IdxCache undocumented
 type IdxCache struct {
 	FirstEnd Range
 	Pos      RecordPos
 }
 
+// IdxCaches undocumented
 type IdxCaches struct {
 	infos     []*IdxInfo
 	caches    RowIndex
 	negatives []*Range
 }
 
+// RowIndex undocumented
 type RowIndex struct {
 	cnt      int
 	pat      string
@@ -790,6 +793,7 @@ type RowIndex struct {
 	datas    []*IdxCache
 }
 
+// IdxInfo undocumented
 type IdxInfo struct {
 	path  string
 	first uint64
@@ -797,17 +801,20 @@ type IdxInfo struct {
 	buf   []byte
 }
 
+// InitIdxCaches undocumented
 func InitIdxCaches(i *IdxCaches) {
 	//i.caches = make([]*IdxCache, 0, MAX_IDX_CACHE)
 	i.negatives = make([]*Range, 0, MIN_NEGATIVE_CACHE)
 }
 
+// NewIdxCaches undocumented
 func NewIdxCaches() *IdxCaches {
 	i := &IdxCaches{}
 	InitIdxCaches(i)
 	return i
 }
 
+// SearchMode undocumented
 type SearchMode byte
 
 const (
