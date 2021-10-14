@@ -803,7 +803,11 @@ func (f *IndexFile) commonNearFnByKey(key uint64, less bool) (result SearchFn) {
 			lidx = key
 
 			if len(midxs) > 0 {
-				sidx = midxs[len(midxs)-1].IdxInfo().last + 1
+				// FIXME
+				// nsidx := midxs[len(midxs)-1].IdxInfo().last + 1
+				// if nsidx < lidx {
+				// 	sidx = nsidx
+				// }
 			}
 
 		} else {
