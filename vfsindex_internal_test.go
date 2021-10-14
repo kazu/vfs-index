@@ -49,7 +49,7 @@ func setup() {
 		return
 	}
 	if !FileExist("testdata/idx-inter.tar.gz") {
-		donwloadFromgdrive(fileIDOfidxInter, "testdata/idx.tar.gz")
+		donwloadFromgdrive(fileIDOfidxInter, "testdata/idx-inter.tar.gz")
 	}
 
 	Untar("testdata/idx-inter.tar.gz", "testdata")
@@ -246,7 +246,9 @@ func Test_SearchCondQueryLess_FirstGram(t *testing.T) {
 
 	sCond := idx.On("test", ReaderColumn("title"), MergeOnSearch(false))
 
-	str := sCond.Query(`title <= "拉致問"`).First(ResultOutput("json")).(string)
+	q := sCond.Query(`title <= "拉致問"`)
+
+	str := q.First(ResultOutput("json")).(string)
 
 	assert.NoError(t, e)
 	assert.True(t, len(str) > 0)

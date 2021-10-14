@@ -331,10 +331,15 @@ func idxPath2Info(idxpath string) (fileID uint64, offset int64, first uint64, la
 	}
 
 	sRange := strs[3]
+	if len(strings.Split(sRange, "-")) < 2 {
+		return
+	}
 
 	fileID, _ = strconv.ParseUint(strs[4], 16, 64)
 	offset, _ = strconv.ParseInt(strs[5], 16, 64)
 
+	ostrs := strs
+	_ = ostrs
 	strs = strings.Split(sRange, "-")
 	first, _ = strconv.ParseUint(strs[0], 16, 64)
 	last, _ = strconv.ParseUint(strs[1], 16, 64)
