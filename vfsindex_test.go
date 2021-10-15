@@ -11,8 +11,10 @@ import (
 
 	"go/types"
 
+	"github.com/kazu/fbshelper/query/base"
 	vfs "github.com/kazu/vfs-index"
 	"github.com/kazu/vfs-index/expr"
+	"github.com/kazu/vfs-index/query"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -335,5 +337,47 @@ func TestColumnPathWithStatus(t *testing.T) {
 
 	assert.Equal(t, s, "testdata/vfs/test/3088/3053/3057/name.gram.idx.308830533057-308830533057")
 	assert.Equal(t, s2, "testdata/vfs/test/*/*/*/name.gram.idx.*-*")
+
+}
+
+func Test_RecordListInsertSort(t *testing.T) {
+
+	list := query.NewRecordList()
+	list.Base = base.NewNoLayer(list.Base)
+
+	for i := 0; i < 10; i++ {
+
+		rec := query.NewRecord()
+		rec.SetFileId(query.FromUint64(uint64(2)))
+		rec.SetOffset(query.FromInt64(int64(i * 2)))
+		list.SetAt(list.Count(), rec)
+	}
+
+	i := 9
+
+	rec := query.NewRecord()
+	rec.SetFileId(query.FromUint64(uint64(2)))
+	rec.SetOffset(query.FromInt64(int64(i)))
+	//list.SetAt(list.Count(), rec)
+
+	idx := list.SearchIndex(func(r *query.Record) bool {
+		if status, e := vfs.CompareRecord(r, rec); status > vfs.RecordEQ && e == nil {
+			return true
+		}
+		return false
+	})
+
+	hl := vfs.HookRecordList{RecordList: list}
+	hl.InsertWithKeepSort(rec, idx)
+
+	for _, rec := range list.All() {
+		fmt.Printf("rec.0x%x\n", rec.Offset().Int64())
+	}
+
+	want := list.AtWihoutError(idx)
+	cmp, e := vfs.CompareRecord(want, rec)
+
+	assert.Nil(t, e)
+	assert.Equal(t, vfs.RecordEQ, cmp)
 
 }
