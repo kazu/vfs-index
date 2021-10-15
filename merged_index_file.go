@@ -343,5 +343,4 @@ func (hl HookRecordList) InsertWithKeepSort(rec *query.Record, idx int) {
 		}
 
 	}
-	//l.SetAt(idx, rec)
 }
