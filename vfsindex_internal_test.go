@@ -2,6 +2,7 @@ package vfsindex
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -13,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kazu/fbshelper/query/base"
 	"github.com/kazu/vfs-index/query"
 	"github.com/stretchr/testify/assert"
 )
@@ -44,7 +46,7 @@ func donwloadFromgdrive(id, dst string) {
 func setup() {
 
 	CurrentLogLoevel = LOG_WARN
-	if FileExist(IdxDir) {
+	if FileExist(IdxDir + "/test") {
 		//os.RemoveAll(IdxDir)
 		return
 	}
@@ -56,9 +58,9 @@ func setup() {
 }
 
 func teardown() {
-	if FileExist(IdxDir) {
-		os.RemoveAll(IdxDir)
-	}
+	// if FileExist(IdxDir) {
+	// 	os.RemoveAll(IdxDir)
+	// }
 	if FileExist(IdxNoInterDir) {
 		os.RemoveAll(IdxNoInterDir)
 	}
@@ -710,6 +712,174 @@ func Test_countByIndexFile(t *testing.T) {
 	cnt := finder.countBy(tris[0])
 
 	assert.Equal(t, cnt, 4)
+}
+
+func DupBase(src base.Base) (dst base.Base) {
+
+	dbytes := make([]byte, len(src.R(0)))
+	copy(dbytes, src.R(0))
+
+	dst = src.NewFromBytes(dbytes)
+
+	dst.SetDiffs(src.GetDiffs())
+	return dst
+}
+
+func Test_IndexFileMerged_Merge(t *testing.T) {
+
+	//setup()
+
+	tests := []struct {
+		name   string
+		data   string
+		params struct {
+			path string
+			cnt  int
+		}
+		prepare func(iparams interface{}) []*IndexFileMerged
+		condFn  func(srcs []*IndexFileMerged, iparams interface{}) error
+	}{
+		{
+			name: "simple split",
+			data: "testdata/vfs-inter/test/content.gram.idx.merged.000a000a0023-003000385e74",
+			params: struct {
+				path string
+				cnt  int
+			}{
+				path: "testdata/vfs-inter/test/content.gram.idx.merged.000a000a0023-003000385e74",
+				cnt:  0,
+			},
+			prepare: func(iparams interface{}) []*IndexFileMerged {
+				params := iparams.(struct {
+					path string
+					cnt  int
+				})
+
+				idxer, e := Open(DataDir, RootDir(IdxDir))
+				if e != nil {
+					return nil
+				}
+				m := OpenIndexFileMerged("test", "content", params.path, idxer)
+				dsts, e := m.Split(params.cnt)
+				if e != nil {
+					return nil
+				}
+				return dsts
+			},
+			condFn: func(srcs []*IndexFileMerged, iparams interface{}) error {
+				if len(srcs) < 2 {
+					return errors.New("fail prepare")
+				}
+
+				m0 := srcs[0]
+				m1 := srcs[1]
+
+				kr0, e := m0.keyRecords().Last()
+				if e != nil {
+					return fmt.Errorf("e=%s cannot got last record", e)
+				}
+				kr1, e := m1.keyRecords().First()
+				if e != nil {
+					return fmt.Errorf("e=%s cannot got last record", e)
+				}
+
+				if kr0.Key().Uint64() >= kr1.Key().Uint64() {
+					var bkr1, bkr0 strings.Builder
+					kr0.Dump(kr0.Node.Pos, base.OptDumpOut(&bkr0), base.OptDumpSize(100))
+					kr1.Dump(kr1.Node.Pos, base.OptDumpOut(&bkr1), base.OptDumpSize(100))
+					return fmt.Errorf("kr0=%s kr1=%s\n", bkr0.String(), bkr1.String())
+
+				}
+
+				return nil
+			},
+		},
+		{
+			name: "simple merge",
+			data: "testdata/vfs-inter/test/content.gram.idx.merged.000a000a0023-003000385e74",
+			params: struct {
+				path string
+				cnt  int
+			}{
+				path: "testdata/vfs-inter/test/content.gram.idx.merged.000a000a0023-003000385e74",
+				cnt:  10,
+			},
+			prepare: func(iparams interface{}) []*IndexFileMerged {
+				params := iparams.(struct {
+					path string
+					cnt  int
+				})
+
+				idx, e := Open(DataDir, RootDir(IdxDir))
+				if e != nil {
+					return nil
+				}
+				m := OpenIndexFileMerged("test", "content", params.path, idx)
+				dsts, e := m.Split(params.cnt)
+				if e != nil {
+					return nil
+				}
+				return dsts
+			},
+			condFn: func(srcs []*IndexFileMerged, iparams interface{}) error {
+				if len(srcs) < 2 {
+					return errors.New("fail prepare")
+				}
+				om0 := srcs[0]
+
+				m1 := srcs[1]
+
+				m0, e := om0.Merge(m1)
+				if e != nil {
+					return fmt.Errorf("e=%s fail to merge", e)
+				}
+				okr0, e := om0.keyRecords().Last()
+				if e != nil {
+					return fmt.Errorf("e=%s cannot got last record", e)
+				}
+				_ = okr0
+
+				kr0, e := m0.keyRecords().Last()
+				if e != nil {
+					return fmt.Errorf("e=%s cannot got last record", e)
+				}
+				kr1, e := m1.keyRecords().Last()
+				if e != nil {
+					return fmt.Errorf("e=%s cannot got last record", e)
+				}
+
+				if m0.keyRecords().Count() != m1.keyRecords().Count()+om0.keyRecords().Count() {
+					return fmt.Errorf("before_merge_cnt=%d src_merge_cnt=%d after_merge_cnt=%d",
+						om0.keyRecords().Count(),
+						m1.keyRecords().Count(),
+						m0.keyRecords().Count())
+				}
+
+				if kr0.Key().Uint64() != kr1.Key().Uint64() {
+					var bkr1, bkr0 strings.Builder
+					kr0.Dump(kr0.Node.Pos, base.OptDumpOut(&bkr0), base.OptDumpSize(1000))
+					kr1.Dump(kr1.Node.Pos, base.OptDumpOut(&bkr1), base.OptDumpSize(1000))
+					return fmt.Errorf("kr0(key=0x%x)=\n%s\nkr1(key=0x%x)=\n%s\n",
+						kr0.Key().Uint64(),
+						bkr0.String(),
+						kr1.Key().Uint64(),
+						bkr1.String())
+
+				}
+
+				return nil
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("%s  path=%s cnt=%d", tt.name, tt.params.path, tt.params.cnt), func(t *testing.T) {
+			lists := tt.prepare(tt.params)
+			assert.NotNil(t, lists)
+			assert.NoError(t, tt.condFn(lists, tt.params))
+		})
+	}
+
 }
 
 // func Test_RecordByKey2(t *testing.T) {

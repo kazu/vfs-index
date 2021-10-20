@@ -62,15 +62,20 @@ func teardown() {
 	if vfs.FileExist(IdxDir) {
 		os.RemoveAll(IdxDir)
 	}
-	if vfs.FileExist(IdxInterDir) {
-		os.RemoveAll(IdxInterDir)
-	}
+	// if vfs.FileExist(IdxInterDir) {
+	// 	os.RemoveAll(IdxInterDir)
+	// }
 }
 
 func TestMain(m *testing.M) {
 	setup()
+	use_teardown := true
+	if os.Getenv("GO_TEST_NO_TEARDOWN") == "true" {
+		use_teardown = false
+	}
+
 	ret := m.Run()
-	if ret == 0 {
+	if ret == 0 && use_teardown {
 		teardown()
 	}
 	os.Exit(ret)

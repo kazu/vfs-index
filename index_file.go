@@ -1252,6 +1252,10 @@ func id2RecordsToKeyRecordList(krlist *query.KeyRecordList, KkeyID2Records map[u
 		keys = append(keys, key)
 	}
 
+	sort.SliceStable(keys, func(i, j int) bool {
+		return keys[i] < keys[j]
+	})
+
 	for i, key := range keys {
 		recs := KkeyID2Records[key]
 		recs.Flatten()
