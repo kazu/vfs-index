@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/kazu/fbshelper/query/base"
@@ -124,7 +125,7 @@ func MakeMergedIndexFile(opts ...OptMergeIndexFile) *IndexFileMerged {
 	return &IndexFileMerged{
 		State:      IdxMergedFileState_None,
 		root:       root,
-		keyReocrds: root.Next().Index().IndexNum().Indexes(),
+		keyReocrds: root.Index().IndexNum().Indexes(),
 		opt:        opt,
 	}
 }
@@ -259,66 +260,200 @@ func SearchIndexToStatus(krList *query.RecordList, rec *query.Record, idx int) S
 
 }
 
-// Merge ... Join multiple index merged file
-func (src *IndexFileMerged) Merge(srcs ...*IndexFileMerged) (dst *IndexFileMerged, e error) {
-
-	dst = MakeMergedIndexFile()
-	//cnt := 0
-
-	keyID2Records := map[uint64]*query.RecordList{}
-
-	midxs := make([]*IndexFileMerged, 0, len(srcs)+1)
-	midxs = append(midxs, src)
-	midxs = append(midxs, srcs...)
-
-	for _, midx := range midxs {
-		for _, kr := range midx.KeyRecords().All() {
-			if keyID2Records[kr.Key().Uint64()] == nil {
-				keyID2Records[kr.Key().Uint64()] = query.NewRecordList()
-			}
-			for _, rec := range kr.Records().All() {
-				idx := keyID2Records[kr.Key().Uint64()].SearchIndex(func(r *query.Record) bool {
-					if status, e := CompareRecord(rec, r); status >= RecordEQ && e == nil {
-						return true
-					}
-					return false
-				})
-
-				switch SearchIndexToStatus(keyID2Records[kr.Key().Uint64()], rec, idx) {
-				case FoundSameKeyRecord:
-					continue
-				case OuterKeyRecord:
-					keyID2Records[kr.Key().Uint64()].SetAt(keyID2Records[kr.Key().Uint64()].Count(), rec)
-					continue
-				case InnerKeyRecord:
-					keyID2Records[kr.Key().Uint64()].SetAt(keyID2Records[kr.Key().Uint64()].Count(), rec)
-				}
-
-				keyID2Records[kr.Key().Uint64()].SortBy(func(i, j int) bool {
-					ir := keyID2Records[kr.Key().Uint64()].AtWihoutError(i)
-					jr := keyID2Records[kr.Key().Uint64()].AtWihoutError(j)
-
-					if status, e := CompareRecord(ir, jr); status == RecordLS && e == nil {
-						return true
-					}
-
-					return false
-				})
-			}
-		}
+func (m *IndexFileMerged) keyRecords() *query.KeyRecordList {
+	if m.IndexFile != nil {
+		return m.IndexFile.KeyRecords()
 	}
 
-	id2RecordsToKeyRecordList(dst.keyReocrds, keyID2Records)
+	return m.root.Index().IndexNum().Indexes()
 
-	//dst.root.SetIndex(&query.Index{CommonNode:
-	//dst/root.Index().IndexNum().SetIndexes
-	return dst, nil
 }
 
+// Split ... split merged index file.
+func (m *IndexFileMerged) Split(cnt int) (dsts []*IndexFileMerged, e error) {
+
+	mKeyRecords := m.keyRecords()
+
+	if cnt == 0 {
+		cnt = mKeyRecords.Count() / 2
+	}
+
+	if mKeyRecords.Count() <= cnt {
+		cnt = mKeyRecords.Count()
+	}
+
+	dstsKeyRecords := make([]*query.KeyRecordList, 0, 2)
+	dstsKeyRecords = append(dstsKeyRecords, mKeyRecords.Range(0, cnt-1))
+	if cnt < mKeyRecords.Count() {
+		dstsKeyRecords = append(dstsKeyRecords, mKeyRecords.Range(cnt, mKeyRecords.Count()-1))
+	}
+	for _, dstKr := range dstsKeyRecords {
+		dst := MakeMergedIndexFile()
+		dstKr.Base = base.NewNoLayer(dstKr.Base)
+		dstKr.Flatten()
+		dst.root.Index().IndexNum().SetIndexes(dstKr)
+		dsts = append(dsts, dst)
+	}
+
+	return
+}
+
+func MergeKerRecordList(oKrLists ...*query.KeyRecordList) (dst *query.KeyRecordList, e error) {
+
+	dst = query.NewKeyRecordList()
+	dst.Base = base.NewNoLayer(dst.Base)
+
+	krLists := make([]*query.KeyRecordList, 0, len(oKrLists))
+	// remove root
+	for i := range oKrLists {
+
+		if !oKrLists[i].InRoot() {
+			continue
+		}
+		oKrLists[i].NodeList.ValueInfo = base.ValueInfo(oKrLists[i].List().InfoSlice())
+		nKrList := query.NewKeyRecordList()
+		nKrList.Base = base.NewNoLayer(nKrList.Base)
+		nKrList.Base.Impl().Copy(oKrLists[i].Base.Dup().Impl(), oKrLists[i].NodeList.ValueInfo.Pos-4,
+			oKrLists[i].NodeList.ValueInfo.Size+4, 0, 0)
+
+		nKrList.NodeList.ValueInfo = base.ValueInfo(nKrList.List().InfoSlice())
+		krLists = append(krLists, nKrList)
+
+	}
+
+	SortKrList := func(krList *query.KeyRecordList) error {
+		return krList.SortBy(func(i, j int) bool {
+			ikr, e := krList.At(i)
+			if e != nil {
+				panic("invalid list")
+			}
+			jkr, e := krList.At(j)
+			if e != nil {
+				panic("invalid list")
+			}
+			val := ikr.Key().Uint64() < jkr.Key().Uint64()
+			if !val {
+				return val
+			}
+			return val
+		})
+	}
+	_ = SortKrList
+
+	for i := range krLists {
+		//e := SortKrList(krLists[i])
+		if e != nil {
+			return nil, errors.New("fail sort")
+		}
+		if i == 0 {
+			//SortKrList(krLists[i])
+			continue
+		}
+
+		prevLast, e := krLists[i-1].Last()
+		if e != nil {
+			return nil, fmt.Errorf("IndexFileMerged.Merge(): fail cannot get midxs[%d].keyRecords().Last()", i-1)
+		}
+
+		curFirst, e := krLists[i].First()
+		if e != nil {
+			return nil, fmt.Errorf("IndexFileMerged.Merge(): fail cannot get midxs[%d].keyRecords().First()", i)
+		}
+
+		if prevLast.Key().Uint64() < curFirst.Key().Uint64() {
+
+			if e := dst.Add(*krLists[i-1]); e != nil {
+				return nil, e
+			}
+			if i == len(krLists)-1 {
+				if e := dst.Add(*krLists[i]); e != nil {
+					return nil, e
+				}
+			}
+			continue
+		}
+		j := krLists[i-1].SearchIndex(func(kr *query.KeyRecord) bool {
+			return kr.Key().Uint64() >= curFirst.Key().Uint64()
+		})
+		pKrlists := []*query.KeyRecordList{
+			krLists[i-1].Range(0, j), krLists[i-1].Range(j+1, krLists[i-1].Count()-1)}
+
+		k := krLists[i].SearchIndex(func(kr *query.KeyRecord) bool {
+			return kr.Key().Uint64() >= prevLast.Key().Uint64()
+		})
+
+		cKrList := []*query.KeyRecordList{
+			krLists[i].Range(0, k), krLists[i].Range(k+1, krLists[i].Count()-1)}
+
+		pKrlists[0].Flatten()
+
+		for _, cKr := range cKrList[0].All() {
+			l := pKrlists[1].SearchIndex(func(kr *query.KeyRecord) bool {
+				return kr.Key().Uint64() >= cKr.Key().Uint64()
+			})
+			if pKrlists[1].AtWihoutError(l).Key().Equal(cKr.Key()) {
+				pKrlists[1].AtWihoutError(l).Records().Add(*cKr.Records())
+				continue
+			}
+			pKrlists[1].SetAt(pKrlists[1].Count(), cKr)
+		}
+		if i == len(krLists)-1 {
+			return MergeKerRecordList(
+				append(krLists[0:i-1],
+					[]*query.KeyRecordList{pKrlists[0], pKrlists[1], cKrList[1]}...)...)
+
+		}
+
+		return MergeKerRecordList(
+			append(krLists[0:i-1],
+				append([]*query.KeyRecordList{pKrlists[0], pKrlists[1], cKrList[1]}, krLists[i+1:]...)...)...)
+
+	}
+
+	return
+
+}
+
+// Merge ... Join multiple index merged file
+func (m *IndexFileMerged) Merge(srcs ...*IndexFileMerged) (dst *IndexFileMerged, e error) {
+
+	krLists := make([]*query.KeyRecordList, 0, len(srcs)+1)
+	krLists = append(krLists, m.keyRecords())
+	for _, src := range srcs {
+		krLists = append(krLists, src.keyRecords())
+	}
+
+	sort.Slice(krLists, func(i, j int) bool {
+		ikr, e := krLists[i].First()
+		if e != nil {
+			return false
+		}
+		jkr, e := krLists[j].First()
+		if e != nil {
+			return false
+		}
+
+		return ikr.Key().Uint64() < jkr.Key().Uint64()
+	})
+	dst = MakeMergedIndexFile()
+	//dupBase := m.root.Base.Dup()
+
+	krlist, e := MergeKerRecordList(krLists...)
+	if e != nil {
+		return nil, e
+	}
+	//m.root.Base = dupBase
+
+	dst.root.Index().IndexNum().SetIndexes(krlist)
+	return
+}
+
+// HookRecordList ... to extend query.RecordList in this package.
 type HookRecordList struct {
 	*query.RecordList
 }
 
+// InsertWithKeepSort ... insert query.Record with order of sort.
 func (hl HookRecordList) InsertWithKeepSort(rec *query.Record, idx int) {
 
 	//l := (*query.RecordList)(hl)
