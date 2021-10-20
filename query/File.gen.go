@@ -115,6 +115,15 @@ func (node File) FieldAt(idx int) *base.CommonNode {
 	return node.commonNode().FieldAt(idx)
 }
 
+func (src File) Equal(dst File) bool {
+	for i := 0; i < src.CountOfField(); i++ {
+		if !src.FieldAt(i).Equal(dst.FieldAt(i)) {
+			return false
+		}
+	}
+	return true
+}
+
 type FileWithErr struct {
 	*File
 	Err error

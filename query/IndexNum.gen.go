@@ -115,6 +115,15 @@ func (node IndexNum) FieldAt(idx int) *base.CommonNode {
 	return node.commonNode().FieldAt(idx)
 }
 
+func (src IndexNum) Equal(dst IndexNum) bool {
+	for i := 0; i < src.CountOfField(); i++ {
+		if !src.FieldAt(i).Equal(dst.FieldAt(i)) {
+			return false
+		}
+	}
+	return true
+}
+
 type IndexNumWithErr struct {
 	*IndexNum
 	Err error

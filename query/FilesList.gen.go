@@ -42,6 +42,17 @@ func (node FilesList) AtWihoutError(i int) (result *Files) {
 func (node FilesList) SetAt(i int, v *Files) error {
 	return (*base.List)(node.CommonNode).SetAt(i, v.CommonNode)
 }
+func (node FilesList) Add(v FilesList) error {
+	return (*base.List)(node.CommonNode).Add((*base.List)(v.CommonNode))
+}
+
+func (node FilesList) Range(start, last int) *FilesList {
+	l := (*base.List)(node.CommonNode).New(base.OptRange(start, last))
+	if l == nil {
+		return nil
+	}
+	return &FilesList{CommonNode: (*base.CommonNode)(l)}
+}
 
 func (node FilesList) First() (result *Files, e error) {
 	return node.At(0)

@@ -42,6 +42,17 @@ func (node RootList) AtWihoutError(i int) (result *Root) {
 func (node RootList) SetAt(i int, v *Root) error {
 	return (*base.List)(node.CommonNode).SetAt(i, v.CommonNode)
 }
+func (node RootList) Add(v RootList) error {
+	return (*base.List)(node.CommonNode).Add((*base.List)(v.CommonNode))
+}
+
+func (node RootList) Range(start, last int) *RootList {
+	l := (*base.List)(node.CommonNode).New(base.OptRange(start, last))
+	if l == nil {
+		return nil
+	}
+	return &RootList{CommonNode: (*base.CommonNode)(l)}
+}
 
 func (node RootList) First() (result *Root, e error) {
 	return node.At(0)

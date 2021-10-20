@@ -42,6 +42,17 @@ func (node KeyRecordList) AtWihoutError(i int) (result *KeyRecord) {
 func (node KeyRecordList) SetAt(i int, v *KeyRecord) error {
 	return (*base.List)(node.CommonNode).SetAt(i, v.CommonNode)
 }
+func (node KeyRecordList) Add(v KeyRecordList) error {
+	return (*base.List)(node.CommonNode).Add((*base.List)(v.CommonNode))
+}
+
+func (node KeyRecordList) Range(start, last int) *KeyRecordList {
+	l := (*base.List)(node.CommonNode).New(base.OptRange(start, last))
+	if l == nil {
+		return nil
+	}
+	return &KeyRecordList{CommonNode: (*base.CommonNode)(l)}
+}
 
 func (node KeyRecordList) First() (result *KeyRecord, e error) {
 	return node.At(0)

@@ -42,6 +42,17 @@ func (node IndexNumList) AtWihoutError(i int) (result *IndexNum) {
 func (node IndexNumList) SetAt(i int, v *IndexNum) error {
 	return (*base.List)(node.CommonNode).SetAt(i, v.CommonNode)
 }
+func (node IndexNumList) Add(v IndexNumList) error {
+	return (*base.List)(node.CommonNode).Add((*base.List)(v.CommonNode))
+}
+
+func (node IndexNumList) Range(start, last int) *IndexNumList {
+	l := (*base.List)(node.CommonNode).New(base.OptRange(start, last))
+	if l == nil {
+		return nil
+	}
+	return &IndexNumList{CommonNode: (*base.CommonNode)(l)}
+}
 
 func (node IndexNumList) First() (result *IndexNum, e error) {
 	return node.At(0)

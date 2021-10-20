@@ -115,6 +115,15 @@ func (node Symbols) FieldAt(idx int) *base.CommonNode {
 	return node.commonNode().FieldAt(idx)
 }
 
+func (src Symbols) Equal(dst Symbols) bool {
+	for i := 0; i < src.CountOfField(); i++ {
+		if !src.FieldAt(i).Equal(dst.FieldAt(i)) {
+			return false
+		}
+	}
+	return true
+}
+
 type SymbolsWithErr struct {
 	*Symbols
 	Err error

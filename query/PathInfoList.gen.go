@@ -42,6 +42,17 @@ func (node PathInfoList) AtWihoutError(i int) (result *PathInfo) {
 func (node PathInfoList) SetAt(i int, v *PathInfo) error {
 	return (*base.List)(node.CommonNode).SetAt(i, v.CommonNode)
 }
+func (node PathInfoList) Add(v PathInfoList) error {
+	return (*base.List)(node.CommonNode).Add((*base.List)(v.CommonNode))
+}
+
+func (node PathInfoList) Range(start, last int) *PathInfoList {
+	l := (*base.List)(node.CommonNode).New(base.OptRange(start, last))
+	if l == nil {
+		return nil
+	}
+	return &PathInfoList{CommonNode: (*base.CommonNode)(l)}
+}
 
 func (node PathInfoList) First() (result *PathInfo, e error) {
 	return node.At(0)
