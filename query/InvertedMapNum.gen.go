@@ -115,6 +115,15 @@ func (node InvertedMapNum) FieldAt(idx int) *base.CommonNode {
 	return node.commonNode().FieldAt(idx)
 }
 
+func (src InvertedMapNum) Equal(dst InvertedMapNum) bool {
+	for i := 0; i < src.CountOfField(); i++ {
+		if !src.FieldAt(i).Equal(dst.FieldAt(i)) {
+			return false
+		}
+	}
+	return true
+}
+
 type InvertedMapNumWithErr struct {
 	*InvertedMapNum
 	Err error

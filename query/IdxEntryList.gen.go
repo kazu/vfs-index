@@ -42,6 +42,17 @@ func (node IdxEntryList) AtWihoutError(i int) (result *IdxEntry) {
 func (node IdxEntryList) SetAt(i int, v *IdxEntry) error {
 	return (*base.List)(node.CommonNode).SetAt(i, v.CommonNode)
 }
+func (node IdxEntryList) Add(v IdxEntryList) error {
+	return (*base.List)(node.CommonNode).Add((*base.List)(v.CommonNode))
+}
+
+func (node IdxEntryList) Range(start, last int) *IdxEntryList {
+	l := (*base.List)(node.CommonNode).New(base.OptRange(start, last))
+	if l == nil {
+		return nil
+	}
+	return &IdxEntryList{CommonNode: (*base.CommonNode)(l)}
+}
 
 func (node IdxEntryList) First() (result *IdxEntry, e error) {
 	return node.At(0)
