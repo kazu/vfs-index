@@ -52,6 +52,16 @@ type SelectOptType struct {
 	t   IndexFileType
 }
 
+// ConfigResultFn ... configuration for ResultFn
+type ConfigResultFn struct {
+	useFileFIlter bool
+	fileID        uint64
+	offset        int64
+}
+
+// DefaultCofigResultFn ... default configuration of CofigResultFn
+var DefaultCofigResultFn ConfigResultFn = ConfigResultFn{useFileFIlter: false}
+
 // SelectOption ... for setting option parameter in Select()
 type SelectOption func(*SelectOpt)
 
@@ -64,8 +74,11 @@ type TraverseFn func(f *IndexFile) error
 // CondFn ... function to check condition in Select()
 type CondFn func(f *IndexFile) CondType
 
+// OptResultFn ... option of ResultFn
+type OptResultFn func(*ConfigResultFn)
+
 // ResultFn ... function to find record with SkipFn
-type ResultFn func(SkipFn)
+type ResultFn func(SkipFn, ...OptResultFn)
 
 // InfoFn ... function to find record infomation
 type InfoFn func(RecordInfoArg)
@@ -158,6 +171,14 @@ func OptOnly(t IndexFileType) SelectOption {
 func (opt *SelectOpt) merge(opts []SelectOption) {
 	for i := range opts {
 		opts[i](opt)
+	}
+}
+func OptFilterWithFile(fileID uint64, offset int64) OptResultFn {
+
+	return func(c *ConfigResultFn) {
+		c.useFileFIlter = true
+		c.fileID = fileID
+		c.offset = offset
 	}
 }
 
@@ -622,8 +643,8 @@ func (f *IndexFile) commonFnByKey(key uint64) (result SearchFn) {
 
 	type AddFn func(interface{})
 
-	baseFn := func(skipFn SkipFn, addFn AddFn) {
-		f.recordInfoByKeyFn(key, func(arg RecordInfoArg) {
+	baseFn := func(skipFn SkipFn, addFn AddFn) func(skipFn SkipFn, opts ...OptResultFn) {
+		return f.recordInfoByKeyFn(key, func(arg RecordInfoArg) {
 			if !arg.isKeyRecord {
 				addFn(arg.rec.Value())
 				return
@@ -651,7 +672,7 @@ func (f *IndexFile) commonFnByKey(key uint64) (result SearchFn) {
 				addFn(r)
 			}
 			return
-		})(skipFn)
+		})
 	}
 
 	result.RecChFn = func(in <-chan *query.Record, out chan<- *query.Record) {
@@ -666,6 +687,7 @@ func (f *IndexFile) commonFnByKey(key uint64) (result SearchFn) {
 				if rec == nil {
 					break
 				}
+
 				baseFn(EmptySkip, func(r interface{}) {
 					cRec := r.(*query.Record)
 					if rec.FileId().Uint64() != cRec.FileId().Uint64() {
@@ -675,7 +697,7 @@ func (f *IndexFile) commonFnByKey(key uint64) (result SearchFn) {
 						return
 					}
 					out <- cRec
-				})
+				})(EmptySkip, OptFilterWithFile(rec.FileId().Uint64(), rec.Offset().Int64()))
 			}
 			out <- nil
 
@@ -687,7 +709,7 @@ func (f *IndexFile) commonFnByKey(key uint64) (result SearchFn) {
 			baseFn(EmptySkip, func(r interface{}) {
 				cRec := r.(*query.Record)
 				out <- cRec
-			})
+			})(EmptySkip)
 			out <- nil
 		}(out)
 
@@ -697,14 +719,14 @@ func (f *IndexFile) commonFnByKey(key uint64) (result SearchFn) {
 	result.RecFn = func(skipFn SkipFn) (records []*query.Record) {
 		baseFn(skipFn, func(r interface{}) {
 			records = append(records, r.(*query.Record))
-		})
+		})(skipFn)
 		return
 	}
 
 	result.CntFn = func(skipFn SkipFn) (cnt int) {
 		baseFn(skipFn, func(r interface{}) {
 			cnt++
-		})
+		})(skipFn)
 		return
 	}
 
@@ -729,15 +751,24 @@ func (f *IndexFile) countFnBy(key uint64) CountFn {
 
 func (f *IndexFile) recordInfoByKeyFn(key uint64, fn InfoFn) ResultFn {
 
-	return func(skipFn SkipFn) {
+	return func(skipFn SkipFn, opts ...OptResultFn) {
+		opt := DefaultCofigResultFn
+		for _, optF := range opts {
+			optF(&opt)
+		}
+
 		elapsed := MesureElapsed()
 		defer func() {
 			if LogIsDebug() {
 				Log(LOG_DEBUG, "RecordByKey(%s) %s\n", DecodeTri(key), elapsed("%s"))
 			}
 		}()
-
-		idxs := f.FindByKey(key)
+		var idxs []*IndexFile
+		if opt.useFileFIlter {
+			idxs = f.findByKeyAndRecord(key, opt.fileID, opt.offset)
+		} else {
+			idxs = f.FindByKey(key)
+		}
 		skipCur := 0
 		for _, idx := range idxs {
 			if idx == nil {
@@ -935,7 +966,7 @@ func (f *IndexFile) commonNearFnByKey(key uint64, less bool) (result SearchFn) {
 	return
 }
 
-func (f *IndexFile) FindByKey(key uint64) (result []*IndexFile) {
+func (f *IndexFile) findByKeyAndRecord(key uint64, fileID uint64, offset int64) (result []*IndexFile) {
 
 	c := f.c
 	if filepath.Join(Opt.rootDir, c.TableDir()) != f.Path {
@@ -949,7 +980,13 @@ func (f *IndexFile) FindByKey(key uint64) (result []*IndexFile) {
 
 	pat := ColumnPathWithStatus(c.TableDir(), c.Name, c.IsNum, strkey, strkey, RECORD_WRITTEN)
 
-	paths, _ := filepath.Glob(fmt.Sprintf("%s.*.*", pat))
+	var paths []string
+	if fileID == 0 {
+		paths, _ = filepath.Glob(fmt.Sprintf("%s.*.*", pat))
+	} else {
+		paths, _ = filepath.Glob(fmt.Sprintf("%s.%010x.%010x", pat, fileID, offset))
+	}
+
 	if len(paths) > 0 {
 		for _, path := range paths {
 			matchfile := NewIndexFile(c, path)
@@ -959,7 +996,13 @@ func (f *IndexFile) FindByKey(key uint64) (result []*IndexFile) {
 		return
 	}
 
+	// FIXME: should handle fileID, offset
 	return f.findAllFromMergeIdxs(key)
+}
+
+func (f *IndexFile) FindByKey(key uint64) (result []*IndexFile) {
+
+	return f.findByKeyAndRecord(key, 0, 0)
 }
 
 func (f *IndexFile) FindNearByKey(key uint64, less bool) (results []*IndexFile) {
