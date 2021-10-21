@@ -825,124 +825,179 @@ func (f *IndexFile) commonNearFnByKey(key uint64, less bool) (result SearchFn) {
 
 	type AddFn func(interface{})
 
-	baseFn := func(skipFn SkipFn, addFn AddFn) {
-		idxs := f.FindNearByKey(key, less)
-		skipCur := 0
-		var sidx, lidx uint64
-
-		loncha.Delete(&idxs, func(i int) bool {
-			return idxs[i].IsType(IdxFileType_Merge)
-		})
-
-		midxs := ListMergedIndex(f.c, func(f *IndexFile) CondType {
-			if f.IsType(IdxFileType_NoComplete) {
-				return CondSkip
+	baseFn := func(skipFn SkipFn, addFn AddFn) func(skipFn SkipFn, opts ...OptResultFn) {
+		return func(skipFn SkipFn, opts ...OptResultFn) {
+			opt := DefaultCofigResultFn
+			for _, optF := range opts {
+				optF(&opt)
 			}
-			if f.IsType(IdxFileType_Merge) {
-				//return CondTrue
-				if less && f.IdxInfo().first < key {
-					return CondTrue
-				}
-				if !less && f.IdxInfo().last > key {
-					return CondTrue
-				}
+
+			var idxs []*IndexFile
+			if opt.useFileFIlter {
+				idxs = f.findNearByKeyAndRecord(key, less, opt.fileID, opt.offset)
+			} else {
+				idxs = f.FindNearByKey(key, less)
 			}
-			return CondSkip
-		})
-		for i := range midxs {
-			idx := midxs[i]
-			krs := idx.KeyRecords().Select(func(kr *query.KeyRecord) bool {
-				if less && (kr.Key().Uint64() <= key) {
-					return true
-				}
-				if !less && (kr.Key().Uint64() >= key) {
-					return true
-				}
-				return false
+
+			skipCur := 0
+			var sidx, lidx uint64
+
+			loncha.Delete(&idxs, func(i int) bool {
+				return idxs[i].IsType(IdxFileType_Merge)
 			})
-			for _, kr := range krs {
-				//defer func() { skipCur += kr.Records().Count() }()
-				for j := 0; j < kr.Records().Count(); j++ {
-					if skipFn(skipCur+j) == SkipTrue {
-						continue
-					}
-					if skipFn(skipCur+j) == SkipFinish {
-						break
-					}
 
-					r, _ := kr.Records().At(j)
-					addFn(r)
-				}
-				skipCur += kr.Records().Count()
-			}
-		}
-
-		if less {
-			sidx = OpenIndexFile(f.c).First().IdxInfo().first
-			lidx = key
-
-			if len(midxs) > 0 {
-				// FIXME
-				// nsidx := midxs[len(midxs)-1].IdxInfo().last + 1
-				// if nsidx < lidx {
-				// 	sidx = nsidx
-				// }
-			}
-
-		} else {
-			sidx = key
-			lidx = OpenIndexFile(f.c).Last().IdxInfo().last
-			if len(midxs) > 0 {
-				sidx = midxs[len(midxs)-1].IdxInfo().last + 1
-			}
-		}
-		//_ , _ = sidx, lidx
-		OpenIndexFile(f.c).Select(
-			OptAsc(less),
-			OptRange(sidx, lidx),
-			OptCcondFn(func(f *IndexFile) CondType {
-				//FIXME: merge index support
-				if f.IsType(IdxFileType_NoComplete) || f.IsType(IdxFileType_Merge) {
+			midxs := ListMergedIndex(f.c, func(f *IndexFile) CondType {
+				if f.IsType(IdxFileType_NoComplete) {
 					return CondSkip
-				} else if f.IsType(IdxFileType_Dir) {
-					return CondLazy
 				}
-				return CondTrue
-			}),
-			OptTraverse(func(f *IndexFile) error {
-				// 	return ErrStopTraverse
-				//defer func() { skipCur++ }()
-				if f.IsType(IdxFileType_Write) {
-					defer func() { skipCur++ }()
-					if skipFn(skipCur) == SkipTrue {
-						return nil
+				if f.IsType(IdxFileType_Merge) {
+					//return CondTrue
+					if less && f.IdxInfo().first < key {
+						return CondTrue
 					}
-					if skipFn(skipCur) == SkipFinish {
-						return errors.New("traverse finish")
+					if !less && f.IdxInfo().last > key {
+						return CondTrue
 					}
-
-					addFn(f.KeyRecord().Value())
-				} else if f.IsType(IdxFileType_Merge) {
-					kr := f.KeyRecords().Find(func(kr *query.KeyRecord) bool {
-						return kr.Key().Uint64() == key
-					})
-					defer func() { skipCur += kr.Records().Count() }()
-					for i := 0; i < kr.Records().Count(); i++ {
-						if skipFn(skipCur+i) == SkipTrue {
+				}
+				return CondSkip
+			})
+			for i := range midxs {
+				idx := midxs[i]
+				krs := idx.KeyRecords().Select(func(kr *query.KeyRecord) bool {
+					if less && (kr.Key().Uint64() <= key) {
+						return true
+					}
+					if !less && (kr.Key().Uint64() >= key) {
+						return true
+					}
+					return false
+				})
+				for _, kr := range krs {
+					//defer func() { skipCur += kr.Records().Count() }()
+					for j := 0; j < kr.Records().Count(); j++ {
+						if skipFn(skipCur+j) == SkipTrue {
 							continue
 						}
-						if skipFn(skipCur+i) == SkipFinish {
+						if skipFn(skipCur+j) == SkipFinish {
+							break
+						}
+
+						r, _ := kr.Records().At(j)
+						addFn(r)
+					}
+					skipCur += kr.Records().Count()
+				}
+			}
+
+			if less {
+				sidx = OpenIndexFile(f.c).First().IdxInfo().first
+				lidx = key
+
+				if len(midxs) > 0 {
+					// FIXME
+					// nsidx := midxs[len(midxs)-1].IdxInfo().last + 1
+					// if nsidx < lidx {
+					// 	sidx = nsidx
+					// }
+				}
+
+			} else {
+				sidx = key
+				lidx = OpenIndexFile(f.c).Last().IdxInfo().last
+				if len(midxs) > 0 {
+					sidx = midxs[len(midxs)-1].IdxInfo().last + 1
+				}
+			}
+			//_ , _ = sidx, lidx
+			OpenIndexFile(f.c).Select(
+				OptAsc(less),
+				OptRange(sidx, lidx),
+				OptCcondFn(func(f *IndexFile) CondType {
+					//FIXME: merge index support
+					if f.IsType(IdxFileType_NoComplete) || f.IsType(IdxFileType_Merge) {
+						return CondSkip
+					} else if f.IsType(IdxFileType_Dir) {
+						return CondLazy
+					}
+					return CondTrue
+				}),
+				OptTraverse(func(f *IndexFile) error {
+					// 	return ErrStopTraverse
+					//defer func() { skipCur++ }()
+					if f.IsType(IdxFileType_Write) {
+						defer func() { skipCur++ }()
+						if skipFn(skipCur) == SkipTrue {
+							return nil
+						}
+						if skipFn(skipCur) == SkipFinish {
 							return errors.New("traverse finish")
 						}
 
-						r, _ := kr.Records().At(i)
-						addFn(r)
+						addFn(f.KeyRecord().Value())
+					} else if f.IsType(IdxFileType_Merge) {
+						kr := f.KeyRecords().Find(func(kr *query.KeyRecord) bool {
+							return kr.Key().Uint64() == key
+						})
+						defer func() { skipCur += kr.Records().Count() }()
+						for i := 0; i < kr.Records().Count(); i++ {
+							if skipFn(skipCur+i) == SkipTrue {
+								continue
+							}
+							if skipFn(skipCur+i) == SkipFinish {
+								return errors.New("traverse finish")
+							}
+
+							r, _ := kr.Records().At(i)
+							addFn(r)
+						}
 					}
-				}
-				return nil
-			}),
-		)
+					return nil
+				}),
+			)
+		}
 	}
+
+	result.RecChFn = func(in <-chan *query.Record, out chan<- *query.Record) {
+		if in == nil {
+			goto NO_IN
+		}
+
+		go func(in <-chan *query.Record, out chan<- *query.Record) {
+
+			for rec := range in {
+				if rec == nil {
+					break
+				}
+
+				baseFn(EmptySkip, func(r interface{}) {
+					cRec := r.(*query.Record)
+					if rec.FileId().Uint64() != cRec.FileId().Uint64() {
+						return
+					}
+					if rec.Offset().Int64() != cRec.Offset().Int64() {
+						return
+					}
+					out <- cRec
+				})(EmptySkip, OptFilterWithFile(rec.FileId().Uint64(), rec.Offset().Int64()))
+			}
+			out <- nil
+
+		}(in, out)
+		return
+
+	NO_IN:
+		go func(out chan<- *query.Record) {
+			baseFn(EmptySkip, func(r interface{}) {
+				cRec := r.(*query.Record)
+				out <- cRec
+			})(EmptySkip)
+			out <- nil
+		}(out)
+
+		return
+
+	}
+
 	result.RecFn = func(skipFn SkipFn) (records []*query.Record) {
 		defer func() {
 			Log(LOG_DEBUG, "RecordNearByKeyFn(): recs=%v\n", records)
@@ -950,7 +1005,7 @@ func (f *IndexFile) commonNearFnByKey(key uint64, less bool) (result SearchFn) {
 
 		baseFn(skipFn, func(r interface{}) {
 			records = append(records, r.(*query.Record))
-		})
+		})(skipFn)
 		return
 	}
 	result.CntFn = func(skipFn SkipFn) (cnt int) {
@@ -959,7 +1014,7 @@ func (f *IndexFile) commonNearFnByKey(key uint64, less bool) (result SearchFn) {
 		}()
 		baseFn(skipFn, func(r interface{}) {
 			cnt++
-		})
+		})(skipFn)
 		return cnt
 	}
 
@@ -1007,7 +1062,12 @@ func (f *IndexFile) FindByKey(key uint64) (result []*IndexFile) {
 
 func (f *IndexFile) FindNearByKey(key uint64, less bool) (results []*IndexFile) {
 
-	results = f.FindByKey(key)
+	return f.findNearByKeyAndRecord(key, less, 0, 0)
+}
+
+func (f *IndexFile) findNearByKeyAndRecord(key uint64, less bool, fileID uint64, offset int64) (results []*IndexFile) {
+
+	results = f.findByKeyAndRecord(key, fileID, offset)
 	if len(results) > 0 && results[0] != nil {
 		return results
 	}
@@ -1056,16 +1116,6 @@ func (f *IndexFile) FindNearByKey(key uint64, less bool) (results []*IndexFile) 
 					}
 				}
 
-				// if !less && f.IdxInfo().first > key {
-				// 	result = f
-				// 	return ErrStopTraverse
-				// }
-				// if less && f.IdxInfo().last < key {
-				// 	result = f
-				// 	return ErrStopTraverse
-				// }
-				// result = f
-				// return nil
 				return nil
 			}),
 		)

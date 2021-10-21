@@ -256,6 +256,27 @@ func Test_SearchCondQueryLess_FirstGram(t *testing.T) {
 	assert.True(t, len(str) > 0)
 }
 
+func Test_SearchCondQueryLess_FirstGramUseStream(t *testing.T) {
+	setup()
+
+	CurrentLogLoevel = LOG_WARN
+	idx, e := Open(DataDir,
+		RootDir(IdxDir))
+
+	sCond := idx.On("test", ReaderColumn("title"), MergeOnSearch(false))
+
+	q := sCond.Query(`title <= "拉致問" && id >= 1377865`)
+
+	str := q.First(
+		ResultOutput("json"),
+		OptQueryUseChan(true),
+		ResultStreamt(true),
+	).(string)
+
+	assert.NoError(t, e)
+	assert.True(t, len(str) > 0)
+}
+
 func Test_IndexFile_Select(t *testing.T) {
 	setup()
 

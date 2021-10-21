@@ -230,10 +230,13 @@ func (cond *SearchCond) Select(fn func(SearchElem) bool) (sfinder *SearchFinder)
 				if i == 0 {
 					sfind.recordFns = append(sfind.recordFns, idxFinder.commonNearFnByKey(key, true))
 					sfind.skipdFns = append(sfind.skipdFns, EmptySkip)
+					sfind.addRecordChFn(idxFinder.commonNearFnByKey(key, true).RecChFn)
+
 				}
 				lastIdx := len(sfind.recordFns) - 1
 				if i > 0 {
 					sfind.skipdFns[lastIdx] = sfind.And(lastIdx, key)
+					sfind.addRecordChFn(idxFinder.commonNearFnByKey(key, true).RecChFn)
 				}
 			}
 		case CondOpGe, CondOpGt:
@@ -241,10 +244,12 @@ func (cond *SearchCond) Select(fn func(SearchElem) bool) (sfinder *SearchFinder)
 				if i == 0 {
 					sfind.recordFns = append(sfind.recordFns, idxFinder.commonNearFnByKey(key, false))
 					sfind.skipdFns = append(sfind.skipdFns, EmptySkip)
+					sfind.addRecordChFn(idxFinder.commonNearFnByKey(key, false).RecChFn)
 				}
 				lastIdx := len(sfind.recordFns) - 1
 				if i > 0 {
 					sfind.skipdFns[lastIdx] = sfind.And(lastIdx, key)
+					sfind.addRecordChFn(idxFinder.commonNearFnByKey(key, false).RecChFn)
 				}
 			}
 		}

@@ -30,7 +30,7 @@ type SearchFinder struct {
 
 	recordFnChs []RecordChFn
 	recordChs   []chan *query.Record
-	writerCh    func(c *Column, qrecCh <-chan *query.Record) chan interface{}
+	writerCh    func(c *Column, qrecCh <-chan *query.Record, isFirstOnly bool) chan interface{}
 
 	useStats  bool
 	useChan   bool
@@ -220,7 +220,7 @@ func (sf *SearchFinder) All(opts ...SearchFinderOpt) interface{} {
 	elapsed := MesureElapsedToStat()
 
 	if sf.useStream && sf.writerCh != nil {
-		return sf.recordsCh()
+		return sf.recordsCh(false)
 	}
 
 	recs := sf.Records()
@@ -240,13 +240,13 @@ func (sf *SearchFinder) All(opts ...SearchFinderOpt) interface{} {
 
 }
 
-func (sf *SearchFinder) recordsCh() (outCh chan interface{}) {
+func (sf *SearchFinder) recordsCh(isFirceAndClose bool) (outCh chan interface{}) {
 
 	//	var wg sync.WaitGroup
 	//	wg.Add(1)
 
 	if sf.useChan && len(sf.recordFnChs) > 0 {
-		outCh = sf.writerCh(sf.column(), sf.recordChs[len(sf.recordChs)-1])
+		outCh = sf.writerCh(sf.column(), sf.recordChs[len(sf.recordChs)-1], isFirceAndClose)
 
 		for i := range sf.recordFnChs {
 			if i == 0 {
@@ -260,7 +260,7 @@ func (sf *SearchFinder) recordsCh() (outCh chan interface{}) {
 	}
 
 	recCh := make(chan *query.Record, 10)
-	outCh = sf.writerCh(sf.column(), recCh)
+	outCh = sf.writerCh(sf.column(), recCh, isFirceAndClose)
 	for i := range sf.recordFns {
 		sf.recordFns[i].forRecord = true
 		for _, rec := range sf.recordFns[i].RecFn(sf.skipdFns[i]) {
@@ -269,45 +269,6 @@ func (sf *SearchFinder) recordsCh() (outCh chan interface{}) {
 	}
 	outCh <- nil
 	return
-
-	// go func() {
-	// 	if sf.useChan && len(sf.recordFnChs) > 0 {
-	// 		outCh = sf.writerCh(sf.column(), sf.recordChs[len(sf.recordChs)-1])
-
-	// 		for i := range sf.recordFnChs {
-	// 			if i == 0 {
-	// 				//outs[i] = (chan *query.Record)(sf.recordFnChs[i](nil))
-	// 				sf.recordFnChs[i](nil, sf.recordChs[i])
-	// 				continue
-	// 			}
-	// 			sf.recordFnChs[i](sf.recordChs[i-1], sf.recordChs[i])
-	// 		}
-	// 		wg.Done()
-	// 		// for rec := range sf.recordChs[len(sf.recordChs)-1] {
-	// 		// 	if rec == nil {
-	// 		// 		break
-	// 		// 	}
-
-	// 		// }
-
-	// 		//outCh <- nil
-	// 		return
-	// 	}
-	// 	recCh := make(chan *query.Record, 10)
-	// 	outCh = sf.writerCh(sf.column(), recCh)
-	// 	for i := range sf.recordFns {
-	// 		sf.recordFns[i].forRecord = true
-	// 		for _, rec := range sf.recordFns[i].RecFn(sf.skipdFns[i]) {
-	// 			recCh <- rec
-	// 		}
-	// 	}
-	// 	wg.Done()
-	// 	outCh <- nil
-	// 	return
-	// }()
-
-	// wg.Wait()
-	// return outCh
 
 }
 
@@ -359,6 +320,16 @@ func (sf *SearchFinder) First(opts ...SearchFinderOpt) interface{} {
 
 	if sf.Count() == 0 {
 		return nil
+	}
+	if sf.useStream && sf.writerCh != nil {
+		ch := sf.recordsCh(true)
+		var result interface{}
+		for r := range ch {
+			result = r
+			close(ch)
+			break
+		}
+		return result
 	}
 
 	recs := sf.recordFns[0].RecFn(sf.skipdFns[0])
@@ -433,7 +404,7 @@ func ResultOutput(name string) SearchFinderOpt {
 			}
 			return result
 		}
-		sf.writerCh = func(c *Column, qrecCh <-chan *query.Record) (out chan interface{}) {
+		sf.writerCh = func(c *Column, qrecCh <-chan *query.Record, onlyFirst bool) (out chan interface{}) {
 
 			out = make(chan interface{}, 10)
 			go func(c *Column, in <-chan *query.Record) {
@@ -452,9 +423,15 @@ func ResultOutput(name string) SearchFinderOpt {
 						enc, _ := GetDecoder("." + name)
 						raw, _ := enc.Encoder(rec.cache)
 						out <- string(raw)
+						if onlyFirst {
+							break
+						}
 						continue
 					}
 					out <- rec
+					if onlyFirst {
+						break
+					}
 				}
 				out <- nil
 			}(c, qrecCh)
