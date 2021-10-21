@@ -183,8 +183,18 @@ func (cond *SearchCond) Select(fn func(SearchElem) bool) (sfinder *SearchFinder)
 			keys = append(keys, uint64(k))
 		case string:
 			tmps := TriKeys(k)
+			cnts := make([]int, len(tmps))
+			for i := range cnts {
+				cnts[i] = -1
+			}
 			sort.Slice(tmps, func(i, j int) bool {
-				return idxFinder.countBy(tmps[i]) < idxFinder.countBy(tmps[j])
+				if cnts[i] == -1 {
+					cnts[i] = idxFinder.countBy(tmps[i])
+				}
+				if cnts[j] == -1 {
+					cnts[j] = idxFinder.countBy(tmps[j])
+				}
+				return cnts[i] < cnts[j]
 			})
 			keys = append(keys, tmps...)
 		}

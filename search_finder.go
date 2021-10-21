@@ -63,6 +63,12 @@ func (sf *SearchFinder) addRecordChFn(fns ...RecordChFn) {
 	}
 }
 
+func (sf *SearchFinder) Stop() {
+	if len(sf.recordChs) > 0 {
+		sf.recordChs[0] <- nil
+	}
+}
+
 func (sf *SearchFinder) Limit(n int) *SearchFinder {
 	size := len(sf.skipdFns)
 	sf.skipdFns[size-1] = sf.limit(n)
