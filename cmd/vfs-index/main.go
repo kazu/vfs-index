@@ -57,6 +57,7 @@ Flags:
 	-table		table name for index. prefix name in data file
 	-data		data directory
 	-cnt        output count to match
+	-stream   	stream output
 	-output 	output format, json, csv available. Default: json 
 	-qstdin		string search via STDIN, if qstdin is set, ignore -q flag
 	-q,-query	search query 
@@ -159,10 +160,10 @@ var Cmds = []Cmd{
 }
 
 type CmdOpt struct {
-	name, indexDir, column, table, dir, query, output, info, value         string
-	first, help, nomerge, qstdin, noclean, list, read, write, verbose, cnt bool
-	duration                                                               uint
-	config                                                                 *vfs.ConfigFile
+	name, indexDir, column, table, dir, query, output, info, value                 string
+	first, help, nomerge, qstdin, noclean, list, read, write, verbose, cnt, stream bool
+	duration                                                                       uint
+	config                                                                         *vfs.ConfigFile
 }
 
 type Cmd struct {
@@ -310,6 +311,9 @@ func main() {
 
 	cmd.Flag.UintVar(&opt.duration, "duration", 60, "timeout second of merge duration")
 	cmd.Flag.UintVar(&opt.duration, "d", 60, "timeout second of merge duration(shorthand)")
+
+	cmd.Flag.BoolVar(&opt.stream, "stream", false, "stream outout")
+	cmd.Flag.BoolVar(&opt.stream, "s", false, "stream output (shorthand)")
 
 	cmd.Flag.Parse(os.Args[2:])
 
@@ -579,7 +583,16 @@ func search(opt CmdOpt) {
 		fmt.Printf("%s\n", result)
 		return
 	}
-
+	if opt.stream {
+		results := sCond.Query(opt.query).All(vfs.ResultOutput(opt.output), vfs.OptQueryUseChan(true), vfs.ResultStreamt(true)).(chan interface{})
+		for r := range results {
+			if r == nil {
+				close(results)
+				return
+			}
+			fmt.Printf("%s\n", r)
+		}
+	}
 	results := sCond.Query(opt.query).All(vfs.ResultOutput(opt.output))
 	fmt.Printf("%s\n", results)
 }

@@ -79,11 +79,15 @@ type CountFn func(SkipFn) int
 // SkipFn .. function to filter record result
 type SkipFn func(int) SkipType
 
+// RecordChFn ... function to retrun record slices via chan
+type RecordChFn func(in <-chan *query.Record, out chan<- *query.Record)
+
 // SearchFn ... aggreate RecordFn and CountFn
 type SearchFn struct {
 	forRecord bool
 	RecFn     RecordFn
 	CntFn     CountFn
+	RecChFn   RecordChFn
 }
 
 // RecordInfoArg ... params for InfoFn
@@ -649,6 +653,47 @@ func (f *IndexFile) commonFnByKey(key uint64) (result SearchFn) {
 			return
 		})(skipFn)
 	}
+
+	result.RecChFn = func(in <-chan *query.Record, out chan<- *query.Record) {
+
+		if in == nil {
+			goto NO_IN
+		}
+
+		go func(in <-chan *query.Record, out chan<- *query.Record) {
+
+			for rec := range in {
+				if rec == nil {
+					break
+				}
+				baseFn(EmptySkip, func(r interface{}) {
+					cRec := r.(*query.Record)
+					if rec.FileId().Uint64() != cRec.FileId().Uint64() {
+						return
+					}
+					if rec.Offset().Int64() != cRec.Offset().Int64() {
+						return
+					}
+					out <- cRec
+				})
+			}
+			out <- nil
+
+		}(in, out)
+		return
+
+	NO_IN:
+		go func(out chan<- *query.Record) {
+			baseFn(EmptySkip, func(r interface{}) {
+				cRec := r.(*query.Record)
+				out <- cRec
+			})
+			out <- nil
+		}(out)
+
+		return
+	}
+
 	result.RecFn = func(skipFn SkipFn) (records []*query.Record) {
 		baseFn(skipFn, func(r interface{}) {
 			records = append(records, r.(*query.Record))
@@ -673,6 +718,9 @@ func (f *IndexFile) recordByKeyFn(key uint64) RecordFn {
 
 func (f *IndexFile) countBy(key uint64) (cnt int) {
 	return f.countFnBy(key)(EmptySkip)
+}
+func (f *IndexFile) recordByKeyChFn(key uint64) RecordChFn {
+	return f.commonFnByKey(key).RecChFn
 }
 
 func (f *IndexFile) countFnBy(key uint64) CountFn {

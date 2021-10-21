@@ -27,7 +27,14 @@ type SearchFinder struct {
 	skipdFns  []SkipFn
 	keys      []uint64
 	writer    func(c *Column, qrecs []*query.Record) interface{}
+
+	recordFnChs []RecordChFn
+	recordChs   []chan *query.Record
+	writerCh    func(c *Column, qrecCh <-chan *query.Record) chan interface{}
+
 	useStats  bool
+	useChan   bool
+	useStream bool
 	stats     []*SearchFinderStat
 }
 
@@ -44,9 +51,18 @@ func EmptySkip(i int) SkipType {
 func NewSearchFinder(c *Column) *SearchFinder {
 
 	return &SearchFinder{
-		column: func() *Column { return c },
+		column:    func() *Column { return c },
+		useChan:   false,
+		useStream: false,
 	}
 }
+func (sf *SearchFinder) addRecordChFn(fns ...RecordChFn) {
+	for _, fn := range fns {
+		sf.recordFnChs = append(sf.recordFnChs, fn)
+		sf.recordChs = append(sf.recordChs, make(chan *query.Record, 10))
+	}
+}
+
 func (sf *SearchFinder) Limit(n int) *SearchFinder {
 	size := len(sf.skipdFns)
 	sf.skipdFns[size-1] = sf.limit(n)
@@ -81,6 +97,11 @@ func (sf *SearchFinder) MergeAsAnd(src *SearchFinder) {
 		lastIdx := len(sf.recordFns) - 1
 		sf.skipdFns[lastIdx] = sf.AndWithColumn(lastIdx, key, src.column())
 	}
+	if len(sf.recordFnChs) > 0 {
+		//sf.recordFnChs = append(sf.recordFnChs, src.recordFnChs...)
+		sf.addRecordChFn(src.recordFnChs...)
+	}
+
 }
 
 func (sf *SearchFinder) And(i int, key uint64) (result SkipFn) {
@@ -191,6 +212,11 @@ func (sf *SearchFinder) All(opts ...SearchFinderOpt) interface{} {
 	sf.mergeOpts(opts...)
 
 	elapsed := MesureElapsedToStat()
+
+	if sf.useStream && sf.writerCh != nil {
+		return sf.recordsCh()
+	}
+
 	recs := sf.Records()
 
 	if sf.useStats {
@@ -207,7 +233,103 @@ func (sf *SearchFinder) All(opts ...SearchFinderOpt) interface{} {
 	return sf.writer(sf.column(), recs)
 
 }
+
+func (sf *SearchFinder) recordsCh() (outCh chan interface{}) {
+
+	//	var wg sync.WaitGroup
+	//	wg.Add(1)
+
+	if sf.useChan && len(sf.recordFnChs) > 0 {
+		outCh = sf.writerCh(sf.column(), sf.recordChs[len(sf.recordChs)-1])
+
+		for i := range sf.recordFnChs {
+			if i == 0 {
+				//outs[i] = (chan *query.Record)(sf.recordFnChs[i](nil))
+				sf.recordFnChs[i](nil, sf.recordChs[i])
+				continue
+			}
+			sf.recordFnChs[i](sf.recordChs[i-1], sf.recordChs[i])
+		}
+		return
+	}
+
+	recCh := make(chan *query.Record, 10)
+	outCh = sf.writerCh(sf.column(), recCh)
+	for i := range sf.recordFns {
+		sf.recordFns[i].forRecord = true
+		for _, rec := range sf.recordFns[i].RecFn(sf.skipdFns[i]) {
+			recCh <- rec
+		}
+	}
+	outCh <- nil
+	return
+
+	// go func() {
+	// 	if sf.useChan && len(sf.recordFnChs) > 0 {
+	// 		outCh = sf.writerCh(sf.column(), sf.recordChs[len(sf.recordChs)-1])
+
+	// 		for i := range sf.recordFnChs {
+	// 			if i == 0 {
+	// 				//outs[i] = (chan *query.Record)(sf.recordFnChs[i](nil))
+	// 				sf.recordFnChs[i](nil, sf.recordChs[i])
+	// 				continue
+	// 			}
+	// 			sf.recordFnChs[i](sf.recordChs[i-1], sf.recordChs[i])
+	// 		}
+	// 		wg.Done()
+	// 		// for rec := range sf.recordChs[len(sf.recordChs)-1] {
+	// 		// 	if rec == nil {
+	// 		// 		break
+	// 		// 	}
+
+	// 		// }
+
+	// 		//outCh <- nil
+	// 		return
+	// 	}
+	// 	recCh := make(chan *query.Record, 10)
+	// 	outCh = sf.writerCh(sf.column(), recCh)
+	// 	for i := range sf.recordFns {
+	// 		sf.recordFns[i].forRecord = true
+	// 		for _, rec := range sf.recordFns[i].RecFn(sf.skipdFns[i]) {
+	// 			recCh <- rec
+	// 		}
+	// 	}
+	// 	wg.Done()
+	// 	outCh <- nil
+	// 	return
+	// }()
+
+	// wg.Wait()
+	// return outCh
+
+}
+
 func (sf *SearchFinder) Records() (recs []*query.Record) {
+	if sf.useChan && len(sf.recordFnChs) > 0 {
+		//outs := make([]chan *query.Record, len(sf.recordFnChs))
+		for i := range sf.recordFnChs {
+			if i == 0 {
+				//outs[i] = (chan *query.Record)(sf.recordFnChs[i](nil))
+				sf.recordFnChs[i](nil, sf.recordChs[i])
+				continue
+			}
+			//outs[i] = sf.recordFnChs[i](outs[i-1])
+			sf.recordFnChs[i](sf.recordChs[i-1], sf.recordChs[i])
+
+		}
+		for rec := range sf.recordChs[len(sf.recordFnChs)-1] {
+			if rec == nil {
+				break
+			}
+			recs = append(recs, rec)
+		}
+		for i := range sf.recordChs {
+			close(sf.recordChs[i])
+		}
+		return
+	}
+
 	for i := range sf.recordFns {
 		sf.recordFns[i].forRecord = true
 		recs = append(recs, sf.recordFns[i].RecFn(sf.skipdFns[i])...)
@@ -267,6 +389,18 @@ func OptQueryStat(t bool) SearchFinderOpt {
 	}
 }
 
+func OptQueryUseChan(t bool) SearchFinderOpt {
+	return func(sf *SearchFinder) {
+		sf.useChan = t
+	}
+}
+
+func ResultStreamt(t bool) SearchFinderOpt {
+	return func(sf *SearchFinder) {
+		sf.useStream = t
+	}
+}
+
 // ResultOutput ... output option for SearchFinder
 func ResultOutput(name string) SearchFinderOpt {
 
@@ -292,6 +426,33 @@ func ResultOutput(name string) SearchFinderOpt {
 				return string(raw)
 			}
 			return result
+		}
+		sf.writerCh = func(c *Column, qrecCh <-chan *query.Record) (out chan interface{}) {
+
+			out = make(chan interface{}, 10)
+			go func(c *Column, in <-chan *query.Record) {
+				for qrec := range in {
+					if qrec == nil {
+						break
+					}
+
+					rec := &Record{
+						fileID: qrec.FileId().Uint64(),
+						offset: qrec.Offset().Int64(),
+						size:   qrec.Size().Int64(),
+					}
+					rec.caching(c)
+					if name == "json" || name == "csv" {
+						enc, _ := GetDecoder("." + name)
+						raw, _ := enc.Encoder(rec.cache)
+						out <- string(raw)
+						continue
+					}
+					out <- rec
+				}
+				out <- nil
+			}(c, qrecCh)
+			return out
 		}
 	}
 }
