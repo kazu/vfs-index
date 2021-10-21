@@ -207,10 +207,12 @@ func (cond *SearchCond) Select(fn func(SearchElem) bool) (sfinder *SearchFinder)
 							CntFn: idxFinder.countFnBy(key)})
 
 					sfind.skipdFns = append(sfind.skipdFns, EmptySkip)
+					sfind.addRecordChFn(idxFinder.recordByKeyChFn(key))
 				}
 				lastIdx := len(sfind.recordFns) - 1
 				if i > 0 {
 					sfind.skipdFns[lastIdx] = sfind.And(lastIdx, key)
+					sfind.addRecordChFn(idxFinder.recordByKeyChFn(key))
 				}
 			}
 		case CondOpLe, CondOpLt:

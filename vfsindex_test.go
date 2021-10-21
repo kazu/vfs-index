@@ -215,6 +215,64 @@ func Test_SearcAndhQuery(t *testing.T) {
 	sCond.CancelAndWait()
 }
 
+func Test_SearcAndhQueryUseChan(t *testing.T) {
+	vfs.CurrentLogLoevel = vfs.LOG_WARN
+	idx, e := OpenIndexer()
+	qstr := `title.search("鬼滅の") && id == 3365460`
+	//qstr = `id == 3365460 && title.search("鬼滅の")`
+	q, _ := expr.GetExpr(qstr)
+
+	sCond := idx.On("test", vfs.ReaderColumn(q.Column), vfs.Output(vfs.MapInfOutput))
+	s := time.Now()
+	results := sCond.Query(qstr).All().([]interface{})
+	dur := time.Now().Sub(s)
+	_ = dur
+
+	assert.NoError(t, e)
+	assert.True(t, 0 < len(results))
+	sCond.CancelAndWait()
+
+	sCond = idx.On("test", vfs.ReaderColumn(q.Column), vfs.Output(vfs.MapInfOutput))
+	s = time.Now()
+	results = sCond.Query(qstr).All(vfs.OptQueryUseChan(true)).([]interface{})
+	dur2 := time.Now().Sub(s)
+	_ = dur2
+	assert.NoError(t, e)
+	assert.True(t, 0 < len(results))
+	sCond.CancelAndWait()
+
+	// fmt.Printf("dur=%s dur2=%s\n", dur, dur2)
+	// assert.Truef(t, dur > dur2, "dur=%s <= dur2=%s", dur, dur2)
+
+}
+
+func Test_SearcUseStream(t *testing.T) {
+	vfs.CurrentLogLoevel = vfs.LOG_WARN
+	idx, e := OpenIndexer()
+	qstr := `title.search("鬼滅の") && id == 3365460`
+	//qstr = `id == 3365460 && title.search("鬼滅の")`
+	q, _ := expr.GetExpr(qstr)
+
+	sCond := idx.On("test", vfs.ReaderColumn(q.Column), vfs.Output(vfs.JsonOutput))
+	results := sCond.Query(qstr).All(vfs.OptQueryUseChan(true),
+		vfs.ResultOutput("json"),
+		vfs.ResultStreamt(true)).(chan interface{})
+
+	var out []interface{}
+	for result := range results {
+		if result == nil {
+			close(results)
+			break
+		}
+		out = append(out, result)
+	}
+
+	assert.NoError(t, e)
+	assert.True(t, 0 < len(out))
+	sCond.CancelAndWait()
+
+}
+
 func TestSize(t *testing.T) {
 	a := types.Config{}
 	assert.NotNil(t, a)
