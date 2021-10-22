@@ -811,6 +811,83 @@ func (f *IndexFile) recordInfoByKeyFn(key uint64, fn InfoFn) ResultFn {
 	}
 }
 
+func (f *IndexFile) keyRecordsBy(key uint64, less bool) <-chan *query.KeyRecord {
+	ch := make(chan *query.KeyRecord, 10)
+	idx := f
+	var i int
+
+	if !f.IsType(IdxFileType_Merge) {
+		close(ch)
+		return ch
+	}
+
+	lessFn := func(i, j int) bool {
+		return idx.KeyRecords().AtWihoutError(i).Key().Uint64() < idx.KeyRecords().AtWihoutError(j).Key().Uint64()
+	}
+	loopCond := func(i, size int, less bool) bool {
+		if less {
+			return i > -1
+		}
+
+		return i < size
+	}
+
+	loopInc := func(i int, less bool) int {
+		if less {
+			return i - 1
+		}
+		return i + 1
+	}
+
+	if !idx.KeyRecords().List().IsSorted(lessFn) {
+		goto NO_SORTED
+	}
+
+	i = idx.KeyRecords().SearchIndex(func(kr *query.KeyRecord) bool {
+		return kr.Key().Uint64() < key
+	})
+
+	if i >= idx.KeyRecords().Count() {
+		i = idx.KeyRecords().Count() - 1
+	}
+	if i < 0 {
+		i = 0
+	}
+
+	go func(ch chan<- *query.KeyRecord) {
+		for j := i; loopCond(j, idx.KeyRecords().Count(), less); j = loopInc(j, less) {
+			v := idx.KeyRecords().AtWihoutError(j)
+			if v == nil {
+				continue
+			}
+			ch <- v
+		}
+		close(ch)
+	}(ch)
+	return ch
+
+NO_SORTED:
+
+	krs := f.KeyRecords().Select(func(kr *query.KeyRecord) bool {
+		if less && (kr.Key().Uint64() <= key) {
+			return true
+		}
+		if !less && (kr.Key().Uint64() >= key) {
+			return true
+		}
+		return false
+	})
+	go func(ch chan<- *query.KeyRecord) {
+		for _, kr := range krs {
+			ch <- kr
+		}
+		close(ch)
+	}(ch)
+
+	return ch
+
+}
+
 // RecordNearByKeyFn ... return function near matching of query.Record
 func (f *IndexFile) RecordNearByKeyFn(key uint64, less bool) RecordFn {
 	return f.commonNearFnByKey(key, less).RecFn
@@ -863,17 +940,8 @@ func (f *IndexFile) commonNearFnByKey(key uint64, less bool) (result SearchFn) {
 			})
 			for i := range midxs {
 				idx := midxs[i]
-				krs := idx.KeyRecords().Select(func(kr *query.KeyRecord) bool {
-					if less && (kr.Key().Uint64() <= key) {
-						return true
-					}
-					if !less && (kr.Key().Uint64() >= key) {
-						return true
-					}
-					return false
-				})
-				for _, kr := range krs {
-					//defer func() { skipCur += kr.Records().Count() }()
+
+				for kr := range idx.keyRecordsBy(key, less) {
 					for j := 0; j < kr.Records().Count(); j++ {
 						if skipFn(skipCur+j) == SkipTrue {
 							continue

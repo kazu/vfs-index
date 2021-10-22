@@ -318,9 +318,6 @@ func (sf *SearchFinder) First(opts ...SearchFinderOpt) interface{} {
 	//opts = append(opts, ResultOutput(""))
 	sf.mergeOpts(opts...)
 
-	if sf.Count() == 0 {
-		return nil
-	}
 	if sf.useStream && sf.writerCh != nil {
 		ch := sf.recordsCh(true)
 		var result interface{}
@@ -330,6 +327,10 @@ func (sf *SearchFinder) First(opts ...SearchFinderOpt) interface{} {
 			break
 		}
 		return result
+	}
+
+	if sf.Count() == 0 {
+		return nil
 	}
 
 	recs := sf.recordFns[0].RecFn(sf.skipdFns[0])
