@@ -803,7 +803,50 @@ func (f *IndexFile) recordInfoByKeyFn(key uint64, fn InfoFn) ResultFn {
 					skipCur++
 					continue
 				}
+				if opt.fileID > 0 {
+					lessFn := func(i, j int) bool {
+						iRec := kr.Records().AtWihoutError(i)
+						jRec := kr.Records().AtWihoutError(j)
+						if iRec.FileId().Uint64() < jRec.FileId().Uint64() {
+							return true
+						}
+						if iRec.FileId().Uint64() != jRec.FileId().Uint64() {
+							return false
+						}
+						if iRec.Offset().Int64() < jRec.Offset().Int64() {
+							return true
+						}
+						return true
+
+					}
+					if !kr.Records().List().IsSorted(lessFn) {
+						kr.Records().SortBy(lessFn)
+					}
+					recI := kr.Records().SearchIndex(func(r *query.Record) bool {
+						if r.FileId().Uint64() < opt.fileID {
+							return true
+						}
+						if r.FileId().Uint64() > opt.fileID {
+							return false
+						}
+						if r.Offset().Int64() < opt.offset {
+							return true
+						}
+						return false
+					})
+					if recI < 0 {
+						recI = 0
+					}
+
+					if kr.Records().AtWihoutError(recI).FileId().Uint64() != opt.fileID {
+						goto GOTO_NEXT
+					}
+					if kr.Records().AtWihoutError(recI).Offset().Int64() != opt.offset {
+						goto GOTO_NEXT
+					}
+				}
 				fn(RecordInfoArg{true, nil, kr, skipCur, skipFn})
+			GOTO_NEXT:
 				skipCur += kr.Records().Count()
 			}
 		}
@@ -1119,7 +1162,6 @@ func (f *IndexFile) findByKeyAndRecord(key uint64, fileID uint64, offset int64) 
 		return
 	}
 
-	// FIXME: should handle fileID, offset
 	return f.findAllFromMergeIdxs(key)
 }
 
@@ -1255,6 +1297,7 @@ func (f *IndexFile) findAllFromMergeIdxs(key uint64) (result []*IndexFile) {
 		}
 		if f.IsType(IdxFileType_Merge) {
 			if key >= f.IdxInfo().first && key <= f.IdxInfo().last {
+
 				result = append(result, f)
 				continue
 			}
