@@ -932,6 +932,41 @@ NO_SORTED:
 
 }
 
+func MakeLessFn(recs *query.RecordList) func(i, j int) bool {
+
+	return func(i, j int) bool {
+		iRec := recs.AtWihoutError(i)
+		jRec := recs.AtWihoutError(j)
+		if iRec.FileId().Uint64() < jRec.FileId().Uint64() {
+			return true
+		}
+		if iRec.FileId().Uint64() != jRec.FileId().Uint64() {
+			return false
+		}
+		if iRec.Offset().Int64() < jRec.Offset().Int64() {
+			return true
+		}
+		return true
+	}
+}
+
+func MakeSearchInxexFn(fileID uint64, offset int64) func(r *query.Record) bool {
+
+	return func(r *query.Record) bool {
+		if r.FileId().Uint64() < fileID {
+			return true
+		}
+		if r.FileId().Uint64() > fileID {
+			return false
+		}
+		if r.Offset().Int64() < offset {
+			return true
+		}
+		return false
+	}
+
+}
+
 // RecordNearByKeyFn ... return function near matching of query.Record
 func (f *IndexFile) RecordNearByKeyFn(key uint64, less bool) RecordFn {
 	return f.commonNearFnByKey(key, less).RecFn
@@ -980,16 +1015,38 @@ func (f *IndexFile) commonNearFnByKey(key uint64, less bool) (result SearchFn) {
 				idx := midxs[i]
 
 				for kr := range idx.keyRecordsBy(key, less) {
-					for j := 0; j < kr.Records().Count(); j++ {
-						if skipFn(skipCur+j) == SkipTrue {
+					if opt.fileID > 0 {
+						if !kr.Records().List().IsSorted(MakeLessFn(kr.Records())) {
+							kr.Records().SortBy(MakeLessFn(kr.Records()))
+						}
+						rIdx := kr.Records().SearchIndex(MakeSearchInxexFn(opt.fileID, opt.offset))
+						if rIdx >= kr.Records().Count() {
+							rIdx = kr.Records().Count() - 1
+						}
+						if rIdx < 0 {
+							rIdx = 0
+						}
+						rec := kr.Records().AtWihoutError(rIdx)
+						if rec.FileId().Uint64() != opt.fileID || rec.Offset().Int64() != opt.offset || skipFn(skipCur+rIdx) == SkipTrue {
+							skipCur += kr.Records().Count()
 							continue
 						}
-						if skipFn(skipCur+j) == SkipFinish {
-							break
-						}
 
-						r, _ := kr.Records().At(j)
-						addFn(r)
+						addFn(rec)
+
+					} else {
+
+						for j := 0; j < kr.Records().Count(); j++ {
+							if skipFn(skipCur+j) == SkipTrue {
+								continue
+							}
+							if skipFn(skipCur+j) == SkipFinish {
+								break
+							}
+
+							r, _ := kr.Records().At(j)
+							addFn(r)
+						}
 					}
 					skipCur += kr.Records().Count()
 				}
@@ -1014,7 +1071,7 @@ func (f *IndexFile) commonNearFnByKey(key uint64, less bool) (result SearchFn) {
 					sidx = midxs[len(midxs)-1].IdxInfo().last + 1
 				}
 			}
-			//_ , _ = sidx, lidx
+
 			OpenIndexFile(f.c).Select(
 				OptAsc(less),
 				OptRange(sidx, lidx),
@@ -1025,7 +1082,15 @@ func (f *IndexFile) commonNearFnByKey(key uint64, less bool) (result SearchFn) {
 					} else if f.IsType(IdxFileType_Dir) {
 						return CondLazy
 					}
-					return CondTrue
+					if opt.fileID == 0 {
+						return CondTrue
+					}
+
+					if f.FirstRecord().fileID == opt.fileID || f.FirstRecord().offset == opt.offset {
+						return CondTrue
+					}
+					return CondSkip
+
 				}),
 				OptTraverse(func(f *IndexFile) error {
 					if f.IsType(IdxFileType_Write) {
@@ -1038,7 +1103,7 @@ func (f *IndexFile) commonNearFnByKey(key uint64, less bool) (result SearchFn) {
 						}
 
 						addFn(f.KeyRecord().Value())
-					} else if f.IsType(IdxFileType_Merge) {
+					} else if f.IsType(IdxFileType_Merge) { // FIXME: not run this routine?
 						kr := f.KeyRecords().Find(func(kr *query.KeyRecord) bool {
 							return kr.Key().Uint64() == key
 						})

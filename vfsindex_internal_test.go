@@ -250,7 +250,7 @@ func Test_SearchCondQueryLess_FirstGram(t *testing.T) {
 
 	q := sCond.Query(`title <= "拉致問"`)
 
-	str := q.First(ResultOutput("json")).(string)
+	str := q.First(ResultOutput("json"), ResultStreamt(true), OptQueryUseChan(true)).(string)
 
 	assert.NoError(t, e)
 	assert.True(t, len(str) > 0)
