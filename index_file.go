@@ -45,6 +45,8 @@ type SelectOpt struct {
 	enableRange   bool
 	enableBSearch bool
 	onlyType      SelectOptType
+	recordFileID  uint64
+	recordOffset  int64
 }
 
 type SelectOptType struct {
@@ -126,6 +128,8 @@ func DefaultSelectOpt() SelectOpt {
 		enableRange:   false,
 		enableBSearch: false,
 		onlyType:      SelectOptType{use: false},
+		recordFileID:  0,
+		recordOffset:  0,
 	}
 }
 
@@ -165,6 +169,13 @@ func OptOnly(t IndexFileType) SelectOption {
 		opt.onlyType.use = true
 		opt.onlyType.t = t
 
+	}
+}
+
+func OptRecord(fileID uint64, offset int64) SelectOption {
+	return func(opt *SelectOpt) {
+		opt.recordFileID = fileID
+		opt.recordOffset = offset
 	}
 }
 
@@ -238,12 +249,21 @@ func readDirNames(dirname string) ([]string, error) {
 	sort.Strings(names)
 	return names, nil
 }
-
 func dirnamesByType(dirname string, t IndexFileType) (names []string, e error) {
+
+	return dirnamesByTypeAndRecord(dirname, t, 0, 0)
+}
+
+func dirnamesByTypeAndRecord(dirname string, t IndexFileType, fileID uint64, offset int64) (names []string, e error) {
+
+	pfix := "*.*"
+	if fileID > 0 {
+		pfix = fmt.Sprintf("*.%010x.%010x", fileID, offset)
+	}
 
 	switch t {
 	case IdxFileType_Write:
-		names, e = filepath.Glob(filepath.Join(dirname, "*/*/*/*.*.idx.*-*.*"))
+		names, e = filepath.Glob(filepath.Join(dirname, "*/*/*/*.*.idx.*-"+pfix))
 		goto REMOVE_REL
 	case IdxFileType_Merge:
 		names, e = filepath.Glob(filepath.Join(dirname, "*.merged.*"))
@@ -1072,8 +1092,9 @@ func (f *IndexFile) commonNearFnByKey(key uint64, less bool) (result SearchFn) {
 				}
 			}
 
-			OpenIndexFile(f.c).Select(
+			selectOpts := []SelectOption{
 				OptAsc(less),
+				OptOnly(IdxFileType_Write),
 				OptRange(sidx, lidx),
 				OptCcondFn(func(f *IndexFile) CondType {
 					//FIXME: merge index support
@@ -1122,7 +1143,13 @@ func (f *IndexFile) commonNearFnByKey(key uint64, less bool) (result SearchFn) {
 					}
 					return nil
 				}),
-			)
+			}
+
+			if opt.fileID > 0 {
+				selectOpts = append(selectOpts, OptRecord(opt.fileID, opt.offset))
+			}
+
+			OpenIndexFile(f.c).Select(selectOpts...)
 		}
 	}
 
