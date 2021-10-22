@@ -682,7 +682,7 @@ func (f *IndexFile) commonFnByKey(key uint64) (result SearchFn) {
 		}
 
 		go func(in <-chan *query.Record, out chan<- *query.Record) {
-
+			defer recoverAndIgnore()
 			for rec := range in {
 				if rec == nil {
 					break
@@ -706,6 +706,7 @@ func (f *IndexFile) commonFnByKey(key uint64) (result SearchFn) {
 
 	NO_IN:
 		go func(out chan<- *query.Record) {
+			defer recoverAndIgnore()
 			baseFn(EmptySkip, func(r interface{}) {
 				cRec := r.(*query.Record)
 				out <- cRec
@@ -940,6 +941,11 @@ func (f *IndexFile) RecordNearByKeyFn(key uint64, less bool) RecordFn {
 func (f *IndexFile) CountNearByKeyFn(key uint64, less bool) CountFn {
 	return f.commonNearFnByKey(key, less).CntFn
 }
+func recoverAndIgnore() {
+	if x := recover(); x != nil {
+		Log(LOG_WARN, "avoid write close channel=%v", x)
+	}
+}
 
 func (f *IndexFile) commonNearFnByKey(key uint64, less bool) (result SearchFn) {
 
@@ -952,19 +958,8 @@ func (f *IndexFile) commonNearFnByKey(key uint64, less bool) (result SearchFn) {
 				optF(&opt)
 			}
 
-			var idxs []*IndexFile
-			if opt.useFileFIlter {
-				idxs = f.findNearByKeyAndRecord(key, less, opt.fileID, opt.offset)
-			} else {
-				idxs = f.FindNearByKey(key, less)
-			}
-
 			skipCur := 0
 			var sidx, lidx uint64
-
-			loncha.Delete(&idxs, func(i int) bool {
-				return idxs[i].IsType(IdxFileType_Merge)
-			})
 
 			midxs := ListMergedIndex(f.c, func(f *IndexFile) CondType {
 				if f.IsType(IdxFileType_NoComplete) {
@@ -1074,7 +1069,7 @@ func (f *IndexFile) commonNearFnByKey(key uint64, less bool) (result SearchFn) {
 		}
 
 		go func(in <-chan *query.Record, out chan<- *query.Record) {
-
+			defer recoverAndIgnore()
 			for rec := range in {
 				if rec == nil {
 					break
@@ -1098,6 +1093,7 @@ func (f *IndexFile) commonNearFnByKey(key uint64, less bool) (result SearchFn) {
 
 	NO_IN:
 		go func(out chan<- *query.Record) {
+			defer recoverAndIgnore()
 			baseFn(EmptySkip, func(r interface{}) {
 				cRec := r.(*query.Record)
 				out <- cRec

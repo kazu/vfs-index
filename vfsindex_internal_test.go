@@ -171,7 +171,7 @@ func Test_SearchCond_Select(t *testing.T) {
 
 	infs := sCond.Select(func(cond SearchElem) bool {
 		return cond.Op("id", ">", uint64(0))
-	}).Limit(3).All().([]interface{})
+	}).Limit(3).All(OptQueryUseChan(true)).([]interface{})
 
 	assert.Equal(t, 3, len(infs))
 
