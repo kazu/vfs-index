@@ -101,7 +101,7 @@ func TestRegist(t *testing.T) {
 	registDir := TestRoot + "/vfs-regist-test"
 	os.RemoveAll(registDir)
 	idx, e := vfs.Open(DataDir,
-		vfs.RootDir(registDir), vfs.MergeDuration(10*time.Second))
+		vfs.RootDir(registDir), vfs.MergeDuration(1*time.Second))
 
 	assert.NotNil(t, idx)
 	assert.NoError(t, e)
@@ -113,7 +113,7 @@ func TestRegist(t *testing.T) {
 
 func TestStringRegist(t *testing.T) {
 
-	idx, e := vfs.Open(DataDir, DefaultOption(), vfs.MergeDuration(10*time.Second))
+	idx, e := vfs.Open(DataDir, DefaultOption(), vfs.MergeDuration(1*time.Second))
 
 	assert.NotNil(t, idx)
 	assert.NoError(t, e)
@@ -334,7 +334,7 @@ func TestMerge(t *testing.T) {
 
 	sCond := idx.On("test", vfs.ReaderColumn("id"), vfs.MergeOnSearch(true))
 	sCond.StartMerging()
-	time.Sleep(10 * time.Second)
+	//time.Sleep(10 * time.Second)
 	sCond.CancelAndWait()
 
 	assert.Equal(t, 1, 1)
