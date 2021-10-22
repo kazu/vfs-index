@@ -1028,8 +1028,6 @@ func (f *IndexFile) commonNearFnByKey(key uint64, less bool) (result SearchFn) {
 					return CondTrue
 				}),
 				OptTraverse(func(f *IndexFile) error {
-					// 	return ErrStopTraverse
-					//defer func() { skipCur++ }()
 					if f.IsType(IdxFileType_Write) {
 						defer func() { skipCur++ }()
 						if skipFn(skipCur) == SkipTrue {

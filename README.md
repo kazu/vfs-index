@@ -185,3 +185,6 @@ csvstr := sCond.Select(func(cond vfs.SearchElem) bool {
 - [ ] msgpack support
 - [x] support compression data (  lz4(?) )
 - [x] binary search mergedindex file
+- [ ] improve performance to search Comparison operator(exclude equal) with stream
+  - [ ] improve performance to search in merged index
+  - [ ] improve performance to search in non-merged index
