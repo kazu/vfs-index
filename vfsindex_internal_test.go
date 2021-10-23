@@ -84,9 +84,9 @@ func Test_IndexFile(t *testing.T) {
 	kr, e := keyrecords.First()
 
 	assert.NoError(t, e)
-	assert.Equal(t, IdxFileType_Dir, finder.Ftype)
+	assert.Equal(t, IdxFileTypeDir, finder.Ftype)
 	assert.True(t, keyrecords.Count() > 0)
-	assert.Equal(t, kr.Key().Uint64(), finder.First().IdxInfo().first)
+	assert.Equal(t, finder.First().IdxInfo().first, kr.Key().Uint64())
 
 	kr2 := finder.Last().KeyRecord()
 	assert.Equal(t, kr2.Key().Uint64(), finder.Last().IdxInfo().last)
@@ -94,18 +94,18 @@ func Test_IndexFile(t *testing.T) {
 	f := NewIndexFile(c, IdxDir+"test/content.gram.idx.merged.000a000a0023-003000385e74")
 	f.Init()
 
-	assert.True(t, f.IsType(IdxFileType_Merge))
+	assert.True(t, f.IsType(IdxFileTypeMerge))
 	assert.Equal(t, uint64(0x000a000a0023), f.IdxInfo().first)
 
 	f = NewIndexFile(c, IdxDir+"/test/0033/0039/0053/id.num.idx.003300390053-003300390053.00064507ea.0000000004")
 	f.Init()
 
-	assert.Equal(t, IdxFileType_None, f.Ftype)
+	assert.Equal(t, IdxFileTypeNone, f.Ftype)
 	f = NewIndexFile(c, IdxDir+"/test/0033/0033/0035/content.gram.idx.003300330035-003300330035.00064507ea.0000000004")
 	f.Init()
 	a := f.KeyRecord().Key().Int64()
 	_ = a
-	assert.True(t, f.IsType(IdxFileType_Write))
+	assert.True(t, f.IsType(IdxFileTypeWrite))
 
 }
 func Test_FindByKey_IndexFIle(t *testing.T) {
@@ -297,11 +297,11 @@ func Test_IndexFile_Select(t *testing.T) {
 	e = finder.Select(
 		OptAsc(true),
 		OptCcondFn(func(f *IndexFile) CondType {
-			if f.IsType(IdxFileType_NoComplete) {
+			if f.IsType(IdxFileTypeNoComplete) {
 				return CondSkip
-			} else if f.IsType(IdxFileType_Merge) {
+			} else if f.IsType(IdxFileTypeMerge) {
 				return CondSkip
-			} else if f.IsType(IdxFileType_Dir) {
+			} else if f.IsType(IdxFileTypeDir) {
 				return CondLazy
 			}
 
@@ -341,19 +341,19 @@ func Test_IndexFile_Select(t *testing.T) {
 		OptRange(0, 0x4500582664),
 		//OptRange(0x0b00582664, 0x4500582664),
 		OptCcondFn(func(f *IndexFile) CondType {
-			if f.Ftype == IdxFileType_None {
+			if f.Ftype == IdxFileTypeNone {
 				return CondSkip
 			}
 
-			if f.IsType(IdxFileType_NoComplete) {
+			if f.IsType(IdxFileTypeNoComplete) {
 				return CondSkip
 			}
 			fmt.Printf("cond %s\n", f.Path)
-			if f.IsType(IdxFileType_Dir) {
+			if f.IsType(IdxFileTypeDir) {
 				return CondLazy
 			}
 
-			if f.IsType(IdxFileType_Merge) {
+			if f.IsType(IdxFileTypeMerge) {
 				return CondSkip
 			}
 			return CondTrue
@@ -375,21 +375,21 @@ func Test_IndexFile_Select(t *testing.T) {
 	e = f.Select(
 		OptAsc(true),
 		OptRange(0, 0x4500582664),
-		OptOnly(IdxFileType_Write),
+		OptOnly(IdxFileTypeWrite),
 		OptCcondFn(func(f *IndexFile) CondType {
-			if f.Ftype == IdxFileType_None {
+			if f.Ftype == IdxFileTypeNone {
 				return CondSkip
 			}
 
-			if f.IsType(IdxFileType_NoComplete) {
+			if f.IsType(IdxFileTypeNoComplete) {
 				return CondSkip
 			}
 			fmt.Printf("cond %s\n", f.Path)
-			if f.IsType(IdxFileType_Dir) {
+			if f.IsType(IdxFileTypeDir) {
 				return CondLazy
 			}
 
-			if f.IsType(IdxFileType_Merge) {
+			if f.IsType(IdxFileTypeMerge) {
 				return CondSkip
 			}
 			return CondTrue
@@ -455,7 +455,7 @@ func Test_IndexFile_parentWith(t *testing.T) {
 	d := NewIndexFile(c, f3.Path)
 	d.Init()
 
-	childs := d.childs(IdxFileType_Dir)
+	childs := d.childs(IdxFileTypeDir)
 	assert.True(t, len(childs) > 0)
 
 	// m := f2.middle(f1)
@@ -574,7 +574,7 @@ func Test_IndexFile_RecordNearByKey(t *testing.T) {
 		vals = append(vals, val)
 	}
 
-	assert.Equal(t, 22, len(vals))
+	assert.Equal(t, 24, len(vals))
 }
 
 func Test_IndexFile_Select2(t *testing.T) {

@@ -469,16 +469,16 @@ func (c *Column) baseMergeIndex(ctx context.Context, w IdxWriter) error {
 
 	finder.Select(
 		OptAsc(true),
-		OptOnly(IdxFileType_Write),
+		OptOnly(IdxFileTypeWrite),
 		OptCcondFn(func(f *IndexFile) CondType {
-			if f.Ftype == IdxFileType_None {
+			if f.Ftype == IdxFileTypeNone {
 				return CondSkip
 			}
-			if f.IsType(IdxFileType_NoComplete) {
+			if f.IsType(IdxFileTypeNoComplete) {
 				return CondSkip
-			} else if f.IsType(IdxFileType_Merge) {
+			} else if f.IsType(IdxFileTypeMerge) {
 				return CondSkip
-			} else if f.IsType(IdxFileType_Dir) {
+			} else if f.IsType(IdxFileTypeDir) {
 				return CondLazy
 			}
 
@@ -737,7 +737,7 @@ func (c *Column) emptyDirs(idirs []string) []string {
 		OptAsc(true),
 		OptCcondFn(func(f *IndexFile) CondType {
 
-			if f.IsType(IdxFileType_Dir) {
+			if f.IsType(IdxFileTypeDir) {
 				defer func() {
 					bar.Increment()
 					if bar.Current() >= 80 {

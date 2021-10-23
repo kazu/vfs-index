@@ -35,7 +35,7 @@ type IndexFileMerged struct {
 // ToIndexFileMerged ... convert to IndexFileMerged
 func ToIndexFileMerged(l *IndexFile) *IndexFileMerged {
 
-	if l.Ftype != IdxFileType_Merge {
+	if l.Ftype != IdxFileTypeMerge {
 		return nil
 	}
 
@@ -51,7 +51,6 @@ func OpenIndexFileMerged(table, column, path string, idxer *Indexer) *IndexFileM
 		MergeDuration(1*time.Minute),
 		MergeOnSearch(true))
 	f := NewIndexFile(sCond.IndexFile().Column(), path)
-	f.Init()
 	return ToIndexFileMerged(f)
 }
 
