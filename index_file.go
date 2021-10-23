@@ -3,6 +3,7 @@ package vfsindex
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -20,12 +21,20 @@ import (
 type IndexFileType int
 
 const (
-	IdxFileType_None IndexFileType = 0
-	IdxFileType_Dir  IndexFileType = 1 << iota
-	IdxFileType_Merge
-	IdxFileType_Write
-	IdxFileType_MyColum
-	IdxFileType_NoComplete
+	// IdxFileTypeNoInit ... default on init
+	IdxFileTypeNoInit IndexFileType = 0
+	// IdxFileTypeNone ... default on init
+	IdxFileTypeNone IndexFileType = 1 << iota
+	// IdxFileTypeDir ... directory
+	IdxFileTypeDir
+	// IdxFileTypeMerge ... merged(multiple) index file
+	IdxFileTypeMerge
+	// IdxFileTypeWrite ... single index file
+	IdxFileTypeWrite
+	// IdxFileTypeMyColum undocumented
+	IdxFileTypeMyColum
+	// IdxFileTypeNoComplete ... index file is not completed
+	IdxFileTypeNoComplete
 )
 
 // IndexFile ... file entity of index file in index table directories
@@ -33,6 +42,13 @@ type IndexFile struct {
 	Path  string
 	Ftype IndexFileType
 	c     *Column
+	cache indexFileCache
+}
+
+type indexFileCache struct {
+	keyRecords *query.KeyRecordList
+	keyRecord  *query.InvertedMapNum
+	closer     io.Closer
 }
 
 // SelectOpt ... sarch options for select.
@@ -49,6 +65,7 @@ type SelectOpt struct {
 	recordOffset  int64
 }
 
+// SelectOptType ... spefify IndexFile type for Select()
 type SelectOptType struct {
 	use bool
 	t   IndexFileType
@@ -115,9 +132,13 @@ type RecordInfoArg struct {
 }
 
 const (
+	// CondTrue undocumented
 	CondTrue CondType = iota
+	// CondSkip undocumented
 	CondSkip
+	// CondFalse undocumented
 	CondFalse
+	// CondLazy undocumented
 	CondLazy
 )
 
@@ -164,6 +185,7 @@ func OptRange(start, last uint64) SelectOption {
 	}
 }
 
+// OptOnly ... set option of index file type of Select()
 func OptOnly(t IndexFileType) SelectOption {
 	return func(opt *SelectOpt) {
 		opt.onlyType.use = true
@@ -172,6 +194,7 @@ func OptOnly(t IndexFileType) SelectOption {
 	}
 }
 
+// OptRecord ... filter by Record infomation of index file type of Select()
 func OptRecord(fileID uint64, offset int64) SelectOption {
 	return func(opt *SelectOpt) {
 		opt.recordFileID = fileID
@@ -184,6 +207,8 @@ func (opt *SelectOpt) merge(opts []SelectOption) {
 		opts[i](opt)
 	}
 }
+
+// OptFilterWithFile ... filter by Record infomation of ResultFn
 func OptFilterWithFile(fileID uint64, offset int64) OptResultFn {
 
 	return func(c *ConfigResultFn) {
@@ -262,10 +287,10 @@ func dirnamesByTypeAndRecord(dirname string, t IndexFileType, fileID uint64, off
 	}
 
 	switch t {
-	case IdxFileType_Write:
+	case IdxFileTypeWrite:
 		names, e = filepath.Glob(filepath.Join(dirname, "*/*/*/*.*.idx.*-"+pfix))
 		goto REMOVE_REL
-	case IdxFileType_Merge:
+	case IdxFileTypeMerge:
 		names, e = filepath.Glob(filepath.Join(dirname, "*.merged.*"))
 		goto REMOVE_REL
 	default:
@@ -282,23 +307,28 @@ RESULT:
 	return
 }
 
+// OpenIndexFile undocumented
 func OpenIndexFile(c *Column) (idxFile *IndexFile) {
 
 	path := filepath.Join(Opt.rootDir, c.TableDir())
 
 	idxFile = NewIndexFile(c, path)
-	idxFile.Ftype = IdxFileType_Dir
+	idxFile.Ftype = IdxFileTypeDir
 	c.IsNum = c.validateIndexType()
 	return
 }
 
-func NewIndexFile(c *Column, path string) *IndexFile {
-	return &IndexFile{
+// NewIndexFile ... make new IndexFile
+func NewIndexFile(c *Column, path string) (file *IndexFile) {
+	file = &IndexFile{
 		Path: path,
 		c:    c,
 	}
+	file.init(false)
+	return file
 }
 
+// ListMergedIndex ... return all merged index
 func ListMergedIndex(c *Column, fn CondFn, opts ...SelectOption) (result []*IndexFile) {
 
 	OpenIndexFile(c).Select(
@@ -312,6 +342,7 @@ func ListMergedIndex(c *Column, fn CondFn, opts ...SelectOption) (result []*Inde
 	return
 }
 
+// Do undocumented
 func (fn SearchFn) Do(skipFn SkipFn) interface{} {
 	if fn.forRecord {
 		return fn.RecFn(skipFn)
@@ -320,18 +351,30 @@ func (fn SearchFn) Do(skipFn SkipFn) interface{} {
 	return fn.CntFn(skipFn)
 }
 
+// Column undocumented
 func (f IndexFile) Column() *Column {
 	return f.c
 }
 
+// IsType ... check by IndexFileType
 func (f *IndexFile) IsType(t IndexFileType) bool {
 	return f.Ftype&t > 0
 }
+
+// Init undocumented
 func (f *IndexFile) Init() {
+	f.init(true)
+}
+
+func (f *IndexFile) init(force bool) {
+
+	if !force && f.Ftype != IdxFileTypeNoInit {
+		return
+	}
 
 	info, e := os.Stat(f.Path)
 	if e == nil && info.IsDir() {
-		f.Ftype = IdxFileType_Dir
+		f.Ftype = IdxFileTypeDir
 		return
 	}
 
@@ -346,18 +389,18 @@ func (f *IndexFile) Init() {
 
 	strs := strings.Split(filepath.Base(f.Path), fmt.Sprintf("%s.%s.idx", f.c.Name, vlabel()))
 	if len(strs) < 2 {
-		f.Ftype = IdxFileType_None
+		f.Ftype = IdxFileTypeNone
 		return
 	}
 
 	if strs := strings.Split(filepath.Base(f.Path), ".merged."); len(strs) > 1 {
-		f.Ftype = IdxFileType_Merge
+		f.Ftype = IdxFileTypeMerge
 	} else if strs := strings.Split(filepath.Base(f.Path), ".merging."); len(strs) > 1 {
-		f.Ftype = IdxFileType_Merge | IdxFileType_NoComplete
+		f.Ftype = IdxFileTypeMerge | IdxFileTypeNoComplete
 	} else if strs := strings.Split(filepath.Base(f.Path), ".adding."); len(strs) > 1 {
-		f.Ftype = IdxFileType_Write | IdxFileType_NoComplete
+		f.Ftype = IdxFileTypeWrite | IdxFileTypeNoComplete
 	} else if strs := strings.Split(filepath.Base(f.Path), filepath.Base(f.c.Path())); len(strs) > 1 {
-		f.Ftype = IdxFileType_Write
+		f.Ftype = IdxFileTypeWrite
 	}
 }
 
@@ -412,7 +455,6 @@ func (f *IndexFile) idxWithBsearch(names []string, opt *SelectOpt) (idx int) {
 	idx = sort.Search(len(names), func(i int) bool {
 		name := names[i]
 		f := NewIndexFile(f.c, filepath.Join(f.Path, name))
-		f.Init()
 		switch opt.cond(f) {
 		case CondSkip, CondFalse:
 			return false
@@ -433,6 +475,7 @@ func (f *IndexFile) idxWithBsearch(names []string, opt *SelectOpt) (idx int) {
 	return
 }
 
+// Select .. search indexfile by SelectOption
 func (f *IndexFile) Select(opts ...SelectOption) (err error) {
 	opt := DefaultSelectOpt()
 	opt.merge(opts)
@@ -450,7 +493,6 @@ func (f *IndexFile) Select(opts ...SelectOption) (err error) {
 	for i := idx; i < len(names); i++ {
 		name := names[i]
 		f := NewIndexFile(f.c, filepath.Join(f.Path, name))
-		f.Init()
 		switch opt.cond(f) {
 		case CondSkip:
 			continue
@@ -504,20 +546,19 @@ func (f *IndexFile) First() *IndexFile {
 	dirs := []*IndexFile{}
 	for _, name := range names {
 		f := NewIndexFile(f.c, filepath.Join(f.Path, name))
-		f.Init()
 
-		if f.IsType(IdxFileType_NoComplete) {
+		if f.IsType(IdxFileTypeNoComplete) {
 			continue
 		}
 
-		if f.IsType(IdxFileType_Merge) {
+		if f.IsType(IdxFileTypeMerge) {
 			return f
 		}
 
-		if f.IsType(IdxFileType_Write) {
+		if f.IsType(IdxFileTypeWrite) {
 			return f
 		}
-		if f.IsType(IdxFileType_Dir) {
+		if f.IsType(IdxFileTypeDir) {
 			//return f.First()
 			dirs = append(dirs, f)
 		}
@@ -544,23 +585,22 @@ func (f *IndexFile) Last() *IndexFile {
 	afters := []*IndexFile{}
 	for _, name := range names {
 		f := NewIndexFile(f.c, filepath.Join(f.Path, name))
-		f.Init()
 
-		if f.IsType(IdxFileType_NoComplete) {
+		if f.IsType(IdxFileTypeNoComplete) {
 			continue
 		}
 
-		if f.IsType(IdxFileType_Merge) {
+		if f.IsType(IdxFileTypeMerge) {
 			//return f
 			afters = append(afters, f)
 			//return f
 			continue
 		}
 
-		if f.IsType(IdxFileType_Write) {
+		if f.IsType(IdxFileTypeWrite) {
 			return f
 		}
-		if f.IsType(IdxFileType_Dir) {
+		if f.IsType(IdxFileTypeDir) {
 			//afters = append(afters, f)
 			if r := f.Last(); r != nil {
 				return r
@@ -580,8 +620,24 @@ func (f *IndexFile) IdxInfo() IndexPathInfo {
 	return NewIndexInfo(idxPath2Info(filepath.Base(f.Path)))
 }
 
+// ResetCache ... reset cache and close io for caching
+func (f *IndexFile) ResetCache() {
+
+	if f.cache.closer != nil {
+		f.cache.closer.Close()
+	}
+	f.cache.keyRecords = nil
+	f.cache.keyRecord = nil
+
+}
+
+// KeyRecord ... return KeyRecord from flatbuffers
 func (f *IndexFile) KeyRecord() (result *query.InvertedMapNum) {
-	if !f.IsType(IdxFileType_Write) {
+	if f.cache.keyRecord != nil {
+		return f.cache.keyRecord
+	}
+
+	if !f.IsType(IdxFileTypeWrite) {
 		return nil
 	}
 	if file, e := os.Open(f.Path); e == nil {
@@ -591,13 +647,36 @@ func (f *IndexFile) KeyRecord() (result *query.InvertedMapNum) {
 			return nil
 		}
 		ret := query.OpenByBuf(buf).Index().InvertedMapNum()
-		return &ret
+		f.cache.keyRecord = &ret
+		return f.cache.keyRecord
 	}
 	return nil
 }
 
+func (f *IndexFile) neoKeyRecord() (result *query.InvertedMapNum) {
+	if f.cache.keyRecord != nil {
+		return f.cache.keyRecord
+	}
+
+	if !f.IsType(IdxFileTypeWrite) {
+		return nil
+	}
+	if file, e := os.Open(f.Path); e == nil {
+		if e != nil {
+			return nil
+		}
+		ret := query.Open(file, 512).Index().InvertedMapNum()
+		f.cache.keyRecord = &ret
+		f.cache.closer = file
+		return f.cache.keyRecord
+	}
+	return nil
+}
+
+// KeyRecords ... return KeyRecordList from flatbuffers
 func (f *IndexFile) KeyRecords() *query.KeyRecordList {
-	if !f.IsType(IdxFileType_Merge) {
+
+	if !f.IsType(IdxFileTypeMerge) {
 		return nil
 	}
 	if file, e := os.Open(f.Path); e == nil {
@@ -606,19 +685,47 @@ func (f *IndexFile) KeyRecords() *query.KeyRecordList {
 		if e != nil {
 			return nil
 		}
-		return query.OpenByBuf(buf).Index().IndexNum().Indexes()
+		f.cache.keyRecords = query.OpenByBuf(buf).Index().IndexNum().Indexes()
+		return f.cache.keyRecords
 	}
 	return nil
 }
 
+func (f *IndexFile) neoKeyRecords() *query.KeyRecordList {
+	if f.cache.keyRecords != nil {
+		return f.cache.keyRecords
+	}
+
+	if !f.IsType(IdxFileTypeMerge) {
+		return nil
+	}
+	if file, e := os.Open(f.Path); e == nil {
+		if e != nil {
+			return nil
+		}
+		f.cache.keyRecords = query.Open(file, 4096).Index().IndexNum().Indexes()
+		f.cache.closer = file
+		if f.cache.keyRecords.NodeList.ValueInfo.Size <= 0 {
+			f.cache.keyRecords.NodeList.ValueInfo = base.ValueInfo(f.cache.keyRecords.List().InfoSlice())
+		}
+		if f.cache.keyRecords.LenBuf() < f.cache.keyRecords.NodeList.Node.Pos+f.cache.keyRecords.NodeList.ValueInfo.Size {
+			f.cache.keyRecords.R(f.cache.keyRecords.NodeList.Node.Pos + f.cache.keyRecords.NodeList.ValueInfo.Size - 1)
+		}
+
+		return f.cache.keyRecords
+	}
+	return nil
+}
+
+// FirstRecord undocumented
 func (f *IndexFile) FirstRecord() *Record {
 	var rec *query.Record
 	var e error
 
-	if f.IsType(IdxFileType_Write) {
+	if f.IsType(IdxFileTypeWrite) {
 		rec = f.KeyRecord().Value()
 	}
-	if f.IsType(IdxFileType_Merge) {
+	if f.IsType(IdxFileTypeMerge) {
 		kr, _ := f.KeyRecords().First()
 		rec, e = kr.Records().First()
 	}
@@ -632,14 +739,15 @@ func (f *IndexFile) FirstRecord() *Record {
 	}
 }
 
+// LastRecord undocumented
 func (f *IndexFile) LastRecord() *Record {
 	var rec *query.Record
 	var e error
 
-	if f.IsType(IdxFileType_Write) {
+	if f.IsType(IdxFileTypeWrite) {
 		rec = f.KeyRecord().Value()
 	}
-	if f.IsType(IdxFileType_Merge) {
+	if f.IsType(IdxFileTypeMerge) {
 		kr, _ := f.KeyRecords().Last()
 		rec, e = kr.Records().Last()
 	}
@@ -800,18 +908,36 @@ func (f *IndexFile) recordInfoByKeyFn(key uint64, fn InfoFn) ResultFn {
 			if skipFn(skipCur) == SkipFinish {
 				return
 			}
-			if idx.IsType(IdxFileType_Write) {
+			if idx.IsType(IdxFileTypeWrite) {
 				if skipFn(skipCur) == SkipTrue {
 					skipCur++
 					continue
 				}
 				fn(RecordInfoArg{false, idx.KeyRecord(), nil, skipCur, skipFn})
 				skipCur++
-			} else if idx.IsType(IdxFileType_Merge) {
+			} else if idx.IsType(IdxFileTypeMerge) {
 				var kr *query.KeyRecord
 				kr = nil
 				if Opt.useBsearch {
-					kr = BsearchInKeyRecord(key, idx.KeyRecords().Search(func(q *query.KeyRecord) bool {
+					krList := idx.KeyRecords()
+
+					krList.Base = base.NewNoLayer(krList.Base)
+					krList.NodeList.ValueInfo = base.ValueInfo(krList.List().InfoSlice())
+
+					nKrList := query.NewKeyRecordList()
+					nKrList.Base = base.NewNoLayer(nKrList.Base)
+					nKrList.Base.Impl().Copy(krList.Base.Impl(), krList.NodeList.ValueInfo.Pos-4,
+						krList.NodeList.ValueInfo.Size+4, 0, 0)
+					krList = nKrList
+					krList.NodeList.ValueInfo = base.ValueInfo(krList.List().InfoSlice())
+				SORT:
+
+					if !krList.List().IsSorted(MakeKRLessFn(krList)) {
+						krList.SortBy(MakeKRLessFn(krList))
+						goto SORT
+					}
+
+					kr = BsearchInKeyRecord(key, krList.Search(func(q *query.KeyRecord) bool {
 						return q.Key().Uint64() >= key
 					}))
 				} else {
@@ -880,7 +1006,7 @@ func (f *IndexFile) keyRecordsBy(key uint64, less bool) <-chan *query.KeyRecord 
 	idx := f
 	var i int
 
-	if !f.IsType(IdxFileType_Merge) {
+	if !f.IsType(IdxFileTypeMerge) {
 		close(ch)
 		return ch
 	}
@@ -970,19 +1096,28 @@ func MakeLessFn(recs *query.RecordList) func(i, j int) bool {
 	}
 }
 
+func MakeKRLessFn(krList *query.KeyRecordList) func(i, j int) bool {
+
+	return func(i, j int) bool {
+		iKr := krList.AtWihoutError(i)
+		jKr := krList.AtWihoutError(j)
+		return iKr.Key().Uint64() < jKr.Key().Uint64()
+	}
+}
+
 func MakeSearchInxexFn(fileID uint64, offset int64) func(r *query.Record) bool {
 
 	return func(r *query.Record) bool {
 		if r.FileId().Uint64() < fileID {
-			return true
-		}
-		if r.FileId().Uint64() > fileID {
 			return false
 		}
-		if r.Offset().Int64() < offset {
+		if r.FileId().Uint64() > fileID {
 			return true
 		}
-		return false
+		if r.Offset().Int64() < offset {
+			return false
+		}
+		return true
 	}
 
 }
@@ -1017,10 +1152,10 @@ func (f *IndexFile) commonNearFnByKey(key uint64, less bool) (result SearchFn) {
 			var sidx, lidx uint64
 
 			midxs := ListMergedIndex(f.c, func(f *IndexFile) CondType {
-				if f.IsType(IdxFileType_NoComplete) {
+				if f.IsType(IdxFileTypeNoComplete) {
 					return CondSkip
 				}
-				if f.IsType(IdxFileType_Merge) {
+				if f.IsType(IdxFileTypeMerge) {
 					//return CondTrue
 					if less && f.IdxInfo().first < key {
 						return CondTrue
@@ -1094,13 +1229,13 @@ func (f *IndexFile) commonNearFnByKey(key uint64, less bool) (result SearchFn) {
 
 			selectOpts := []SelectOption{
 				OptAsc(less),
-				OptOnly(IdxFileType_Write),
+				OptOnly(IdxFileTypeWrite),
 				OptRange(sidx, lidx),
 				OptCcondFn(func(f *IndexFile) CondType {
 					//FIXME: merge index support
-					if f.IsType(IdxFileType_NoComplete) || f.IsType(IdxFileType_Merge) {
+					if f.IsType(IdxFileTypeNoComplete) || f.IsType(IdxFileTypeMerge) {
 						return CondSkip
-					} else if f.IsType(IdxFileType_Dir) {
+					} else if f.IsType(IdxFileTypeDir) {
 						return CondLazy
 					}
 					if opt.fileID == 0 {
@@ -1114,7 +1249,7 @@ func (f *IndexFile) commonNearFnByKey(key uint64, less bool) (result SearchFn) {
 
 				}),
 				OptTraverse(func(f *IndexFile) error {
-					if f.IsType(IdxFileType_Write) {
+					if f.IsType(IdxFileTypeWrite) {
 						defer func() { skipCur++ }()
 						if skipFn(skipCur) == SkipTrue {
 							return nil
@@ -1124,7 +1259,7 @@ func (f *IndexFile) commonNearFnByKey(key uint64, less bool) (result SearchFn) {
 						}
 
 						addFn(f.KeyRecord().Value())
-					} else if f.IsType(IdxFileType_Merge) { // FIXME: not run this routine?
+					} else if f.IsType(IdxFileTypeMerge) { // FIXME: not run this routine?
 						kr := f.KeyRecords().Find(func(kr *query.KeyRecord) bool {
 							return kr.Key().Uint64() == key
 						})
@@ -1242,7 +1377,6 @@ func (f *IndexFile) findByKeyAndRecord(key uint64, fileID uint64, offset int64) 
 	if len(paths) > 0 {
 		for _, path := range paths {
 			matchfile := NewIndexFile(c, path)
-			matchfile.Init()
 			result = append(result, matchfile)
 		}
 		return
@@ -1280,16 +1414,15 @@ func (f *IndexFile) findNearByKeyAndRecord(key uint64, less bool, fileID uint64,
 	pat := ColumnPathWithStatus(c.TableDir(), c.Name, c.IsNum, strkey, strkey, RECORD_WRITTEN)
 	for {
 		dir := NewIndexFile(f.c, filepath.Dir(pat))
-		dir.Init()
 
 		e := dir.Select(
 			OptAsc(less),
 			OptCcondFn(func(f *IndexFile) CondType {
-				if f.IsType(IdxFileType_NoComplete) {
+				if f.IsType(IdxFileTypeNoComplete) {
 					return CondSkip
-				} else if f.IsType(IdxFileType_Merge) {
+				} else if f.IsType(IdxFileTypeMerge) {
 					return CondSkip
-				} else if f.IsType(IdxFileType_Dir) {
+				} else if f.IsType(IdxFileTypeDir) {
 					return CondLazy
 				}
 				return CondTrue
@@ -1348,7 +1481,7 @@ func (f *IndexFile) findAllFromMergeIdxs(key uint64) (result []*IndexFile) {
 		return nil //ErrNotIndexDir
 	}
 
-	names, err := dirnamesByType(f.Path, IdxFileType_Merge)
+	names, err := dirnamesByType(f.Path, IdxFileTypeMerge)
 	loncha.Filter(&names, func(i int) bool {
 		return c.Name == names[i][0:len(c.Name)]
 	})
@@ -1370,18 +1503,16 @@ func (f *IndexFile) findAllFromMergeIdxs(key uint64) (result []*IndexFile) {
 
 	idx = sort.Search(len(names), func(i int) bool {
 		f := NewIndexFile(f.c, filepath.Join(f.Path, names[i]))
-		f.Init()
-		return f.IsType(IdxFileType_Merge) && key >= f.IdxInfo().first && key <= f.IdxInfo().last
+		return f.IsType(IdxFileTypeMerge) && key >= f.IdxInfo().first && key <= f.IdxInfo().last
 	})
 	result = make([]*IndexFile, 0, len(names)-idx)
 
 	for i := idx; i < len(names); i++ {
 		f := NewIndexFile(f.c, filepath.Join(f.Path, names[i]))
-		f.Init()
-		if f.IsType(IdxFileType_NoComplete) {
+		if f.IsType(IdxFileTypeNoComplete) {
 			continue
 		}
-		if f.IsType(IdxFileType_Merge) {
+		if f.IsType(IdxFileTypeMerge) {
 			if key >= f.IdxInfo().first && key <= f.IdxInfo().last {
 
 				result = append(result, f)
@@ -1400,12 +1531,11 @@ NOT_USE_BSEARCH:
 	// TODO: must binary-search. multiple result
 	for _, name := range names {
 		f := NewIndexFile(f.c, filepath.Join(f.Path, name))
-		f.Init()
 
-		if f.IsType(IdxFileType_NoComplete) {
+		if f.IsType(IdxFileTypeNoComplete) {
 			continue
 		}
-		if f.IsType(IdxFileType_Merge) {
+		if f.IsType(IdxFileTypeMerge) {
 			if key >= f.IdxInfo().first && key <= f.IdxInfo().last {
 				return []*IndexFile{f}
 			}
@@ -1445,12 +1575,11 @@ func (f *IndexFile) childs(t IndexFileType) (cDirs []*IndexFile) {
 
 	for i := range names {
 		c := NewIndexFile(f.c, filepath.Join(f.Path, names[i]))
-		c.Init()
 		cDirs = append(cDirs, c)
 	}
 
 	loncha.Delete(&cDirs, func(i int) bool {
-		return !cDirs[i].IsType(t) || cDirs[i].IsType(IdxFileType_NoComplete)
+		return !cDirs[i].IsType(t) || cDirs[i].IsType(IdxFileTypeNoComplete)
 	})
 	return cDirs
 }
@@ -1468,7 +1597,7 @@ func (l *IndexFile) middle(h *IndexFile) *IndexFile {
 	// if err != nil {
 	// 	return nil
 	// }
-	cDirs := p.childs(IdxFileType_Dir)
+	cDirs := p.childs(IdxFileTypeDir)
 
 	if len(cDirs) > 0 {
 		lidx, _ := loncha.IndexOf(cDirs, func(i int) bool {
@@ -1512,7 +1641,7 @@ func (l *IndexFile) middle(h *IndexFile) *IndexFile {
 
 func (d *IndexFile) middleAsDir() *IndexFile {
 
-	cDirs := d.childs(IdxFileType_Dir)
+	cDirs := d.childs(IdxFileTypeDir)
 	if len(cDirs) == 1 {
 		fmt.Printf("1 cDirs=%+v\n", cDirs[0])
 		return cDirs[0].middleAsDir()
@@ -1522,7 +1651,7 @@ func (d *IndexFile) middleAsDir() *IndexFile {
 		return cDirs[0].middle(cDirs[len(cDirs)-1])
 	}
 
-	cFiles := d.childs(IdxFileType_Write)
+	cFiles := d.childs(IdxFileTypeWrite)
 	if len(cFiles) == 0 {
 		return nil
 	} else if len(cFiles) == 1 {
@@ -1540,7 +1669,7 @@ func (d *IndexFile) middleAsDir() *IndexFile {
 
 func (l *IndexFile) middleFile(d, h *IndexFile) *IndexFile {
 
-	files := d.childs(IdxFileType_Write)
+	files := d.childs(IdxFileTypeWrite)
 	if len(files) == 0 {
 		//os.Remove(d.Path)
 		return nil

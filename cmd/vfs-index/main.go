@@ -399,15 +399,14 @@ func info(opt CmdOpt) {
 		return
 	}
 	f := vfs.NewIndexFile(sCond.IndexFile().Column(), opt.info)
-	f.Init()
 
 	switch f.Ftype {
-	case vfs.IdxFileType_Merge:
+	case vfs.IdxFileTypeMerge:
 		for _, kr := range f.KeyRecords().All() {
 			fmt.Printf("key=0x%0x count=%d\n", kr.Key().Uint64(), kr.Records().Count())
 		}
 		return
-	case vfs.IdxFileType_Write:
+	case vfs.IdxFileTypeWrite:
 		kr := f.KeyRecord()
 		fmt.Printf("key=0x%0x count=%d\n", kr.Key().Uint64(), 1)
 		return

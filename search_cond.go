@@ -2,7 +2,6 @@ package vfsindex
 
 import (
 	"context"
-	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -187,15 +186,17 @@ func (cond *SearchCond) Select(fn func(SearchElem) bool) (sfinder *SearchFinder)
 			for i := range cnts {
 				cnts[i] = -1
 			}
-			sort.Slice(tmps, func(i, j int) bool {
-				if cnts[i] == -1 {
-					cnts[i] = idxFinder.countBy(tmps[i])
-				}
-				if cnts[j] == -1 {
-					cnts[j] = idxFinder.countBy(tmps[j])
-				}
-				return cnts[i] < cnts[j]
-			})
+			// if !idxFinder.useChan {
+			// 	sort.Slice(tmps, func(i, j int) bool {
+			// 		if cnts[i] == -1 {
+			// 			cnts[i] = idxFinder.countBy(tmps[i])
+			// 		}
+			// 		if cnts[j] == -1 {
+			// 			cnts[j] = idxFinder.countBy(tmps[j])
+			// 		}
+			// 		return cnts[i] < cnts[j]
+			// 	})
+			// }
 			keys = append(keys, tmps...)
 		}
 		keyState <- KeyStateGot
