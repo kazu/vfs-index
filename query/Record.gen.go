@@ -151,6 +151,6 @@ func (node Record) Root() (Root, error) {
 	if !node.InRoot() {
 		return Root{}, log.ERR_NO_INCLUDE_ROOT
 	}
-	root := toRoot(node.Base)
+	root := toRoot(node.IO)
 	return root, nil
 }

@@ -70,10 +70,10 @@ func OpenByBuf(buf []byte, opts ...base.Option) Root {
 	return result
 }
 
-func toRoot(b base.Base) Root {
+func toRoot(b base.IO) Root {
 	common := &CommonNode{}
 	common.NodeList = &base.NodeList{}
-	common.Node = base.NewNode(b, int(flatbuffers.GetUOffsetT(b.R(0))))
+	common.Node = base.NewNode(b, int(flatbuffers.GetUOffsetT(b.R(0, base.Size(4)))))
 	root := Root{CommonNode: common}
 	root.CommonNode.Name = "Root"
 	root.FetchIndex()
@@ -93,12 +93,12 @@ func (node Root) Next() Root {
 		return node
 	}
 
-	newBase := node.Base.Next(start)
+	newBase := node.IO.Next(start)
 
 	root := Root{}
 	root.CommonNode = emptyCommonNode()
 	root.NodeList = &base.NodeList{}
-	root.Node = base.NewNode(newBase, int(flatbuffers.GetUOffsetT(newBase.R(0))))
+	root.Node = base.NewNode(newBase, int(flatbuffers.GetUOffsetT(newBase.R(0, base.Size(4)))))
 	return root
 }
 
