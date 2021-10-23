@@ -631,11 +631,17 @@ func (f *IndexFile) ResetCache() {
 
 }
 
-// KeyRecord ... return KeyRecord from flatbuffers
-func (f *IndexFile) KeyRecord() (result *query.InvertedMapNum) {
+func (f *IndexFile) KeyRecord() *query.InvertedMapNum {
+
 	if f.cache.keyRecord != nil {
 		return f.cache.keyRecord
 	}
+
+	return f.neoKeyRecord()
+}
+
+// KeyRecord ... return KeyRecord from flatbuffers
+func (f *IndexFile) oldKeyRecord() (result *query.InvertedMapNum) {
 
 	if !f.IsType(IdxFileTypeWrite) {
 		return nil
@@ -654,9 +660,6 @@ func (f *IndexFile) KeyRecord() (result *query.InvertedMapNum) {
 }
 
 func (f *IndexFile) neoKeyRecord() (result *query.InvertedMapNum) {
-	if f.cache.keyRecord != nil {
-		return f.cache.keyRecord
-	}
 
 	if !f.IsType(IdxFileTypeWrite) {
 		return nil
@@ -675,6 +678,14 @@ func (f *IndexFile) neoKeyRecord() (result *query.InvertedMapNum) {
 
 // KeyRecords ... return KeyRecordList from flatbuffers
 func (f *IndexFile) KeyRecords() *query.KeyRecordList {
+	if f.cache.keyRecords != nil {
+		return f.cache.keyRecords
+	}
+
+	return f.neoKeyRecords()
+}
+
+func (f *IndexFile) OldKeyRecords() *query.KeyRecordList {
 
 	if !f.IsType(IdxFileTypeMerge) {
 		return nil
@@ -692,9 +703,6 @@ func (f *IndexFile) KeyRecords() *query.KeyRecordList {
 }
 
 func (f *IndexFile) neoKeyRecords() *query.KeyRecordList {
-	if f.cache.keyRecords != nil {
-		return f.cache.keyRecords
-	}
 
 	if !f.IsType(IdxFileTypeMerge) {
 		return nil
@@ -705,12 +713,12 @@ func (f *IndexFile) neoKeyRecords() *query.KeyRecordList {
 		}
 		f.cache.keyRecords = query.Open(file, 4096).Index().IndexNum().Indexes()
 		f.cache.closer = file
-		if f.cache.keyRecords.NodeList.ValueInfo.Size <= 0 {
-			f.cache.keyRecords.NodeList.ValueInfo = base.ValueInfo(f.cache.keyRecords.List().InfoSlice())
-		}
-		if f.cache.keyRecords.LenBuf() < f.cache.keyRecords.NodeList.Node.Pos+f.cache.keyRecords.NodeList.ValueInfo.Size {
-			f.cache.keyRecords.R(f.cache.keyRecords.NodeList.Node.Pos + f.cache.keyRecords.NodeList.ValueInfo.Size - 1)
-		}
+		// if f.cache.keyRecords.NodeList.ValueInfo.Size <= 0 {
+		// 	f.cache.keyRecords.NodeList.ValueInfo = base.ValueInfo(f.cache.keyRecords.List().InfoSlice())
+		// }
+		// if f.cache.keyRecords.LenBuf() < f.cache.keyRecords.NodeList.Node.Pos+f.cache.keyRecords.NodeList.ValueInfo.Size {
+		// 	f.cache.keyRecords.R(f.cache.keyRecords.NodeList.Node.Pos + f.cache.keyRecords.NodeList.ValueInfo.Size - 1)
+		// }
 
 		return f.cache.keyRecords
 	}
@@ -921,12 +929,12 @@ func (f *IndexFile) recordInfoByKeyFn(key uint64, fn InfoFn) ResultFn {
 				if Opt.useBsearch {
 					krList := idx.KeyRecords()
 
-					krList.Base = base.NewNoLayer(krList.Base)
+					krList.IO = base.NewNoLayer(krList.IO)
 					krList.NodeList.ValueInfo = base.ValueInfo(krList.List().InfoSlice())
 
 					nKrList := query.NewKeyRecordList()
-					nKrList.Base = base.NewNoLayer(nKrList.Base)
-					nKrList.Base.Impl().Copy(krList.Base.Impl(), krList.NodeList.ValueInfo.Pos-4,
+					nKrList.IO = base.NewNoLayer(nKrList.IO)
+					nKrList.IO.Impl().Copy(krList.IO.Impl(), krList.NodeList.ValueInfo.Pos-4,
 						krList.NodeList.ValueInfo.Size+4, 0, 0)
 					krList = nKrList
 					krList.NodeList.ValueInfo = base.ValueInfo(krList.List().InfoSlice())
@@ -1727,7 +1735,7 @@ func id2RecordsToKeyRecordList(krlist *query.KeyRecordList, KkeyID2Records map[u
 		recs := KkeyID2Records[key]
 		recs.Flatten()
 		kr := query.NewKeyRecord()
-		kr.Base = base.NewNoLayer(kr.Base)
+		kr.IO = base.NewNoLayer(kr.IO)
 		kr.SetKey(query.FromUint64(key))
 		kr.SetRecords(recs)
 		kr.Flatten()

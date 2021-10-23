@@ -106,16 +106,16 @@ func MakeMergedIndexFile(opts ...OptMergeIndexFile) *IndexFileMerged {
 
 	if root == nil {
 		root = query.NewRoot()
-		root.Base = base.NewNoLayer(root.Base)
+		root.IO = base.NewNoLayer(root.IO)
 		root.SetVersion(query.FromInt32(1))
 		root.WithHeader()
 		root.SetIndexType(query.FromByte(byte(vfs_schema.IndexIndexNum)))
 		root.Flatten()
 
 		idxNum := query.NewIndexNum()
-		idxNum.Base = base.NewNoLayer(idxNum.Base)
+		idxNum.IO = base.NewNoLayer(idxNum.IO)
 		keyrecords := query.NewKeyRecordList()
-		keyrecords.Base = base.NewNoLayer(keyrecords.Base)
+		keyrecords.IO = base.NewNoLayer(keyrecords.IO)
 
 		idxNum.SetIndexes(keyrecords)
 		root.SetIndex(&query.Index{CommonNode: idxNum.CommonNode})
@@ -171,7 +171,7 @@ func (m *IndexFileMerged) Write() (e error) {
 			return m.err
 		},
 		func() (e error) {
-			if len(m.root.Base.GetDiffs()) > 0 {
+			if len(m.root.IO.GetDiffs()) > 0 {
 				m.root.Flatten()
 			}
 			_, e = io.Write(m.root.R(0))
@@ -288,7 +288,7 @@ func (m *IndexFileMerged) Split(cnt int) (dsts []*IndexFileMerged, e error) {
 	}
 	for _, dstKr := range dstsKeyRecords {
 		dst := MakeMergedIndexFile()
-		dstKr.Base = base.NewNoLayer(dstKr.Base)
+		dstKr.IO = base.NewNoLayer(dstKr.IO)
 		dstKr.Flatten()
 		dst.root.Index().IndexNum().SetIndexes(dstKr)
 		dsts = append(dsts, dst)
@@ -300,7 +300,7 @@ func (m *IndexFileMerged) Split(cnt int) (dsts []*IndexFileMerged, e error) {
 func MergeKerRecordList(oKrLists ...*query.KeyRecordList) (dst *query.KeyRecordList, e error) {
 
 	dst = query.NewKeyRecordList()
-	dst.Base = base.NewNoLayer(dst.Base)
+	dst.IO = base.NewNoLayer(dst.IO)
 
 	krLists := make([]*query.KeyRecordList, 0, len(oKrLists))
 	// remove root
@@ -311,8 +311,8 @@ func MergeKerRecordList(oKrLists ...*query.KeyRecordList) (dst *query.KeyRecordL
 		}
 		oKrLists[i].NodeList.ValueInfo = base.ValueInfo(oKrLists[i].List().InfoSlice())
 		nKrList := query.NewKeyRecordList()
-		nKrList.Base = base.NewNoLayer(nKrList.Base)
-		nKrList.Base.Impl().Copy(oKrLists[i].Base.Dup().Impl(), oKrLists[i].NodeList.ValueInfo.Pos-4,
+		nKrList.IO = base.NewNoLayer(nKrList.IO)
+		nKrList.IO.Impl().Copy(oKrLists[i].IO.Dup().Impl(), oKrLists[i].NodeList.ValueInfo.Pos-4,
 			oKrLists[i].NodeList.ValueInfo.Size+4, 0, 0)
 
 		nKrList.NodeList.ValueInfo = base.ValueInfo(nKrList.List().InfoSlice())
