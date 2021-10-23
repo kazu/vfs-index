@@ -127,7 +127,7 @@ func (g GlobCache) Run(key string) {
 
 		copy(bytes[pos:pos+headsize], cl.R(cl.NodeList.ValueInfo.Pos - 4)[:headsize])
 		bytes = bytes[: pos+headsize : pos+headsize]
-		root.Base = base.NewDirectReader(base.NewBase(bytes), r)
+		root.IO = base.NewDirectReader(base.NewBase(bytes), r)
 	}
 
 	if root.FieldAt(2).Node != nil && root.Index().IdxEntry().Pathinfos().Count() > 0 {
@@ -262,7 +262,7 @@ func (g *GlobCache) Get(pat string) *query.PathInfoList {
 		}
 		g.dReader[pat] = f
 	}
-	result.Base = base.NewDirectReader(result.Base, g.dReader[pat])
+	result.IO = base.NewDirectReader(result.IO, g.dReader[pat])
 	//Log(LOG_DEBUG, "GlobCache.Get() open %s \n", globcachePath(pat))
 
 	return result

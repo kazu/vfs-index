@@ -82,6 +82,9 @@ func Test_IndexFile(t *testing.T) {
 	finder := OpenIndexFile(c)
 	keyrecords := finder.First().KeyRecords()
 	kr, e := keyrecords.First()
+	okr, _ := finder.First().OldKeyRecords().First()
+	okr.Key()
+	kr.Key()
 
 	assert.NoError(t, e)
 	assert.Equal(t, IdxFileTypeDir, finder.Ftype)
@@ -735,7 +738,7 @@ func Test_countByIndexFile(t *testing.T) {
 	assert.Equal(t, cnt, 4)
 }
 
-func DupBase(src base.Base) (dst base.Base) {
+func DupBase(src base.IO) (dst base.IO) {
 
 	dbytes := make([]byte, len(src.R(0)))
 	copy(dbytes, src.R(0))

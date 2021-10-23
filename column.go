@@ -431,12 +431,12 @@ func (c *Column) baseMergeIndex(ctx context.Context, w IdxWriter) error {
 	root.Flatten()
 
 	idxNum := query.NewIndexNum()
-	idxNum.Base = base.NewNoLayer(idxNum.Base)
+	idxNum.IO = base.NewNoLayer(idxNum.IO)
 	keyrecords := query.NewKeyRecordList()
-	keyrecords.Base = base.NewNoLayer(keyrecords.Base)
+	keyrecords.IO = base.NewNoLayer(keyrecords.IO)
 
 	mergedKeyRecords := keyrecords
-	mergedKeyRecords.Base = keyrecords.Base
+	mergedKeyRecords.IO = keyrecords.IO
 	mergedKeyId2Records := map[uint64]*query.RecordList{}
 
 	var firstPath *IndexFile

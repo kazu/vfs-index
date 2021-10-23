@@ -405,7 +405,7 @@ func TestColumnPathWithStatus(t *testing.T) {
 func Test_RecordListInsertSort(t *testing.T) {
 
 	list := query.NewRecordList()
-	list.Base = base.NewNoLayer(list.Base)
+	list.IO = base.NewNoLayer(list.IO)
 
 	for i := 0; i < 10; i++ {
 
