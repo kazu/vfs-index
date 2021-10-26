@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kazu/fbshelper/query/base"
 	"github.com/kazu/vfs-index/decompress"
 	"github.com/kazu/vfs-index/query"
 	"github.com/kazu/vfs-index/vfs_schema"
@@ -280,11 +281,29 @@ func (r *Record) ToFbs(inf interface{}) []byte {
 	inv.SetValue(rec)
 
 	root.SetIndexType(query.FromByte(byte(vfs_schema.IndexInvertedMapNum)))
+
+	dupFn := func(src *base.BaseImpl, srcOff int, size int) []byte {
+
+		invBuf := make([]byte, size)
+
+		for srcPtr := srcOff; srcPtr < srcOff+size; {
+			data := src.R(srcPtr, base.Size(size-(srcPtr-srcOff)))
+			if len(data) == 0 {
+				panic("hoge")
+			}
+			copy(invBuf[srcPtr-srcOff:], data)
+
+			srcPtr += len(data)
+		}
+		return invBuf
+	}
+
+	_ = dupFn
+
 	root.SetIndex(&query.Index{CommonNode: inv.CommonNode})
 
-	// FIXME return io writer ?
 	root.Flatten()
-	return root.R(0)
+	return root.R(0, base.Size(root.LenBuf()))
 }
 
 func NewRecords(n int) Records {

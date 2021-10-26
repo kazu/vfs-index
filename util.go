@@ -674,7 +674,7 @@ func (b *BufWriterIO) Flush() (e error) {
 
 func BsearchInKeyRecord(key uint64, kr *query.KeyRecord) *query.KeyRecord {
 
-	if kr.Key().Uint64() == key && kr.CommonNode != nil {
+	if kr.CommonNode != nil && kr.Key().Uint64() == key {
 		return kr
 	}
 

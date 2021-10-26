@@ -415,7 +415,7 @@ func ResultOutput(name string) SearchFinderOpt {
 
 			out = make(chan interface{}, 10)
 			go func(c *Column, in <-chan *query.Record) {
-				defer recoverAndIgnore()
+				defer recoverOnWriteClosedChan()
 				cnt := -1
 				for qrec := range in {
 					cnt++

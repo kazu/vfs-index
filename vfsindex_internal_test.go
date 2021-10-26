@@ -429,8 +429,8 @@ func Test_Recrod_ToFbs(t *testing.T) {
 	root := query.OpenByBuf(buf)
 	a := root.Index().InvertedMapNum().Key().Uint64()
 	_ = a
-	assert.NotEqual(t, uint64(0),
-		root.Index().InvertedMapNum().Key().Uint64())
+	assert.NotEqualf(t, uint64(0x0),
+		root.Index().InvertedMapNum().Key().Uint64(), "root.Index().InvertedMapNum().Key().Uint64()=0x%x", root.Index().InvertedMapNum().Key().Uint64())
 
 }
 
@@ -751,14 +751,71 @@ func DupBase(src base.IO) (dst base.IO) {
 
 func Test_IndexFileMerged_Merge(t *testing.T) {
 
-	//setup()
+	setup()
+
+	mergedeCond := func(srcs []*IndexFileMerged, iparams interface{}) error {
+		params := iparams.(struct {
+			path    string
+			cnt     int
+			overlap int
+		})
+
+		if len(srcs) < 2 {
+			return errors.New("fail prepare")
+		}
+		om0 := srcs[0]
+
+		m1 := srcs[1]
+
+		m0, e := om0.Merge(m1)
+		if e != nil {
+			return fmt.Errorf("e=%s fail to merge", e)
+		}
+
+		if m0.keyRecords().Count() != m1.keyRecords().Count()+om0.keyRecords().Count()-params.overlap {
+			return fmt.Errorf("before_merge_cnt=%d src_merge_cnt=%d after_merge_cnt=%d",
+				om0.keyRecords().Count(),
+				m1.keyRecords().Count(),
+				m0.keyRecords().Count())
+		}
+
+		okr0, e := om0.keyRecords().Last()
+		if e != nil {
+			return fmt.Errorf("e=%s base list cannot got last record", e)
+		}
+		_ = okr0
+
+		kr0, e := m0.keyRecords().Last()
+		if e != nil {
+			return fmt.Errorf("e=%s error to get last record of merged list ", e)
+		}
+		kr1, e := m1.keyRecords().Last()
+		if e != nil {
+			return fmt.Errorf("e=%s error to get source list  for merging list  in  last record", e)
+		}
+
+		if kr0.Key().Uint64() != kr1.Key().Uint64() {
+			var bkr1, bkr0 strings.Builder
+			kr0.Dump(kr0.Node.Pos, base.OptDumpOut(&bkr0), base.OptDumpSize(1000))
+			kr1.Dump(kr1.Node.Pos, base.OptDumpOut(&bkr1), base.OptDumpSize(1000))
+			return fmt.Errorf("kr0(key=0x%x)=\n%s\nkr1(key=0x%x)=\n%s\n",
+				kr0.Key().Uint64(),
+				bkr0.String(),
+				kr1.Key().Uint64(),
+				bkr1.String())
+
+		}
+
+		return nil
+	}
 
 	tests := []struct {
 		name   string
 		data   string
 		params struct {
-			path string
-			cnt  int
+			path    string
+			cnt     int
+			overlap int
 		}
 		prepare func(iparams interface{}) []*IndexFileMerged
 		condFn  func(srcs []*IndexFileMerged, iparams interface{}) error
@@ -767,16 +824,19 @@ func Test_IndexFileMerged_Merge(t *testing.T) {
 			name: "simple split",
 			data: "testdata/vfs-inter/test/content.gram.idx.merged.000a000a0023-003000385e74",
 			params: struct {
-				path string
-				cnt  int
+				path    string
+				cnt     int
+				overlap int
 			}{
-				path: "testdata/vfs-inter/test/content.gram.idx.merged.000a000a0023-003000385e74",
-				cnt:  0,
+				path:    "testdata/vfs-inter/test/content.gram.idx.merged.000a000a0023-003000385e74",
+				cnt:     0,
+				overlap: 0,
 			},
 			prepare: func(iparams interface{}) []*IndexFileMerged {
 				params := iparams.(struct {
-					path string
-					cnt  int
+					path    string
+					cnt     int
+					overlap int
 				})
 
 				idxer, e := Open(DataDir, RootDir(IdxDir))
@@ -822,16 +882,19 @@ func Test_IndexFileMerged_Merge(t *testing.T) {
 			name: "simple merge",
 			data: "testdata/vfs-inter/test/content.gram.idx.merged.000a000a0023-003000385e74",
 			params: struct {
-				path string
-				cnt  int
+				path    string
+				cnt     int
+				overlap int
 			}{
-				path: "testdata/vfs-inter/test/content.gram.idx.merged.000a000a0023-003000385e74",
-				cnt:  10,
+				path:    "testdata/vfs-inter/test/content.gram.idx.merged.000a000a0023-003000385e74",
+				cnt:     10,
+				overlap: 0,
 			},
 			prepare: func(iparams interface{}) []*IndexFileMerged {
 				params := iparams.(struct {
-					path string
-					cnt  int
+					path    string
+					cnt     int
+					overlap int
 				})
 
 				idx, e := Open(DataDir, RootDir(IdxDir))
@@ -845,59 +908,64 @@ func Test_IndexFileMerged_Merge(t *testing.T) {
 				}
 				return dsts
 			},
-			condFn: func(srcs []*IndexFileMerged, iparams interface{}) error {
-				if len(srcs) < 2 {
-					return errors.New("fail prepare")
-				}
-				om0 := srcs[0]
-
-				m1 := srcs[1]
-
-				m0, e := om0.Merge(m1)
-				if e != nil {
-					return fmt.Errorf("e=%s fail to merge", e)
-				}
-				okr0, e := om0.keyRecords().Last()
-				if e != nil {
-					return fmt.Errorf("e=%s cannot got last record", e)
-				}
-				_ = okr0
-
-				kr0, e := m0.keyRecords().Last()
-				if e != nil {
-					return fmt.Errorf("e=%s cannot got last record", e)
-				}
-				kr1, e := m1.keyRecords().Last()
-				if e != nil {
-					return fmt.Errorf("e=%s cannot got last record", e)
-				}
-
-				if m0.keyRecords().Count() != m1.keyRecords().Count()+om0.keyRecords().Count() {
-					return fmt.Errorf("before_merge_cnt=%d src_merge_cnt=%d after_merge_cnt=%d",
-						om0.keyRecords().Count(),
-						m1.keyRecords().Count(),
-						m0.keyRecords().Count())
-				}
-
-				if kr0.Key().Uint64() != kr1.Key().Uint64() {
-					var bkr1, bkr0 strings.Builder
-					kr0.Dump(kr0.Node.Pos, base.OptDumpOut(&bkr0), base.OptDumpSize(1000))
-					kr1.Dump(kr1.Node.Pos, base.OptDumpOut(&bkr1), base.OptDumpSize(1000))
-					return fmt.Errorf("kr0(key=0x%x)=\n%s\nkr1(key=0x%x)=\n%s\n",
-						kr0.Key().Uint64(),
-						bkr0.String(),
-						kr1.Key().Uint64(),
-						bkr1.String())
-
-				}
-
-				return nil
+			condFn: mergedeCond,
+		},
+		{
+			name: "overlap merge",
+			data: "testdata/vfs-inter/test/content.gram.idx.merged.000a000a0023-003000385e74",
+			params: struct {
+				path    string
+				cnt     int
+				overlap int
+			}{
+				path:    "testdata/vfs-inter/test/content.gram.idx.merged.000a000a0023-003000385e74",
+				cnt:     100,
+				overlap: 2,
 			},
+			prepare: func(iparams interface{}) []*IndexFileMerged {
+				params := iparams.(struct {
+					path    string
+					cnt     int
+					overlap int
+				})
+
+				idx, e := Open(DataDir, RootDir(IdxDir))
+				if e != nil {
+					return nil
+				}
+				m := OpenIndexFileMerged("test", "content", params.path, idx)
+				pdsts, e := m.Split(params.cnt)
+				if e != nil {
+					return nil
+				}
+				if params.overlap == 0 {
+					return pdsts
+				}
+				dsts := make([]*IndexFileMerged, 2)
+				dsts[0] = pdsts[0]
+
+				cdsts, e := m.Split(params.cnt - params.overlap)
+				if e != nil {
+					return nil
+				}
+				c0 := cdsts[0].keyRecords().AtWihoutError(0).Key().Uint64()
+				c1 := cdsts[1].keyRecords().AtWihoutError(0).Key().Uint64()
+				_, _ = c0, c1
+
+				dsts[1] = cdsts[1]
+
+				return dsts
+			},
+			condFn: mergedeCond,
 		},
 	}
 
 	for _, tt := range tests {
+		// if tt.name != "overlap merge" {
+		// 	continue
+		// }
 		t.Run(fmt.Sprintf("%s  path=%s cnt=%d", tt.name, tt.params.path, tt.params.cnt), func(t *testing.T) {
+
 			lists := tt.prepare(tt.params)
 			assert.NotNil(t, lists)
 			assert.NoError(t, tt.condFn(lists, tt.params))
