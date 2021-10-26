@@ -307,6 +307,7 @@ func MergeKerRecordList(oKrLists ...*query.KeyRecordList) (dst *query.KeyRecordL
 	for i := range oKrLists {
 
 		if !oKrLists[i].InRoot() {
+			krLists = append(krLists, oKrLists[i])
 			continue
 		}
 		oKrLists[i].NodeList.ValueInfo = base.ValueInfo(oKrLists[i].List().InfoSlice())

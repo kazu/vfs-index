@@ -682,7 +682,15 @@ func (f *IndexFile) KeyRecords() *query.KeyRecordList {
 		return f.cache.keyRecords
 	}
 
-	return f.neoKeyRecords()
+	//f.cache.keyRecords = f.OldKeyRecords()
+	f.cache.keyRecords = f.neoKeyRecords(true)
+	// oldKrList := f.OldKeyRecords()
+	// if !oldKrList.Equal(f.cache.keyRecords.CommonNode) {
+	// 	// for debug
+	// 	oldKrList.Equal(f.cache.keyRecords.CommonNode)
+	// }
+
+	return f.cache.keyRecords
 }
 
 func (f *IndexFile) OldKeyRecords() *query.KeyRecordList {
@@ -696,13 +704,12 @@ func (f *IndexFile) OldKeyRecords() *query.KeyRecordList {
 		if e != nil {
 			return nil
 		}
-		f.cache.keyRecords = query.OpenByBuf(buf).Index().IndexNum().Indexes()
-		return f.cache.keyRecords
+		return query.OpenByBuf(buf).Index().IndexNum().Indexes()
 	}
 	return nil
 }
 
-func (f *IndexFile) neoKeyRecords() *query.KeyRecordList {
+func (f *IndexFile) neoKeyRecords(loadInfo bool) *query.KeyRecordList {
 
 	if !f.IsType(IdxFileTypeMerge) {
 		return nil
@@ -711,16 +718,30 @@ func (f *IndexFile) neoKeyRecords() *query.KeyRecordList {
 		if e != nil {
 			return nil
 		}
-		f.cache.keyRecords = query.Open(file, 4096).Index().IndexNum().Indexes()
+		result := query.Open(file, 4096).Index().IndexNum().Indexes()
 		f.cache.closer = file
-		// if f.cache.keyRecords.NodeList.ValueInfo.Size <= 0 {
-		// 	f.cache.keyRecords.NodeList.ValueInfo = base.ValueInfo(f.cache.keyRecords.List().InfoSlice())
-		// }
-		// if f.cache.keyRecords.LenBuf() < f.cache.keyRecords.NodeList.Node.Pos+f.cache.keyRecords.NodeList.ValueInfo.Size {
-		// 	f.cache.keyRecords.R(f.cache.keyRecords.NodeList.Node.Pos + f.cache.keyRecords.NodeList.ValueInfo.Size - 1)
-		// }
+		if loadInfo {
+			if result.NodeList.ValueInfo.Size <= 0 {
+				result.NodeList.ValueInfo = base.ValueInfo(result.List().InfoSlice())
+			}
+			if result.LenBuf() < result.NodeList.Node.Pos+result.NodeList.ValueInfo.Size {
+				result.R(result.NodeList.Node.Pos, base.Size(result.NodeList.ValueInfo.Size))
+			}
+		}
 
-		return f.cache.keyRecords
+		// krList := f.KeyRecords()
+		// krList.IO = base.NewNoLayer(krList.IO)
+		// krList.NodeList.ValueInfo = base.ValueInfo(krList.List().InfoSlice())
+
+		// nKrList := query.NewKeyRecordList()
+		// nKrList.IO = base.NewNoLayer(nKrList.IO)
+		// nKrList.IO.Impl().Copy(krList.IO.Impl(), krList.NodeList.ValueInfo.Pos-4,
+		// 	krList.NodeList.ValueInfo.Size+4, 0, 0)
+		// f.cache.keyRecords = nKrList
+		// f.cache.keyRecords.NodeList.ValueInfo = base.ValueInfo(krList.List().InfoSlice())
+		// defer f.cache.closer.Close()
+
+		return result
 	}
 	return nil
 }
@@ -818,7 +839,7 @@ func (f *IndexFile) commonFnByKey(key uint64) (result SearchFn) {
 		}
 
 		go func(in <-chan *query.Record, out chan<- *query.Record) {
-			defer recoverAndIgnore()
+			defer recoverOnWriteClosedChan()
 			for rec := range in {
 				if rec == nil {
 					break
@@ -842,7 +863,7 @@ func (f *IndexFile) commonFnByKey(key uint64) (result SearchFn) {
 
 	NO_IN:
 		go func(out chan<- *query.Record) {
-			defer recoverAndIgnore()
+			defer recoverOnWriteClosedChan()
 			baseFn(EmptySkip, func(r interface{}) {
 				cRec := r.(*query.Record)
 				out <- cRec
@@ -1036,6 +1057,9 @@ func (f *IndexFile) keyRecordsBy(key uint64, less bool) <-chan *query.KeyRecord 
 		}
 		return i + 1
 	}
+	// FIXME: remove later
+	// cntOfKrs := idx.KeyRecords().Count()
+	// _ = cntOfKrs
 
 	if !idx.KeyRecords().List().IsSorted(lessFn) {
 		goto NO_SORTED
@@ -1139,9 +1163,13 @@ func (f *IndexFile) RecordNearByKeyFn(key uint64, less bool) RecordFn {
 func (f *IndexFile) CountNearByKeyFn(key uint64, less bool) CountFn {
 	return f.commonNearFnByKey(key, less).CntFn
 }
-func recoverAndIgnore() {
+func recoverOnWriteClosedChan() {
 	if x := recover(); x != nil {
-		Log(LOG_WARN, "avoid write close channel=%v", x)
+		if e, ok := x.(error); ok && e.Error() == "send on closed channel" {
+			Log(LOG_WARN, "avoid write close channel=%v", x)
+			return
+		}
+		panic(x)
 	}
 }
 
@@ -1302,7 +1330,7 @@ func (f *IndexFile) commonNearFnByKey(key uint64, less bool) (result SearchFn) {
 		}
 
 		go func(in <-chan *query.Record, out chan<- *query.Record) {
-			defer recoverAndIgnore()
+			defer recoverOnWriteClosedChan()
 			for rec := range in {
 				if rec == nil {
 					break
@@ -1326,7 +1354,7 @@ func (f *IndexFile) commonNearFnByKey(key uint64, less bool) (result SearchFn) {
 
 	NO_IN:
 		go func(out chan<- *query.Record) {
-			defer recoverAndIgnore()
+			defer recoverOnWriteClosedChan()
 			baseFn(EmptySkip, func(r interface{}) {
 				cRec := r.(*query.Record)
 				out <- cRec
