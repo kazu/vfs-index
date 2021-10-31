@@ -14,7 +14,9 @@ import (
 	"github.com/kazu/loncha"
 	"github.com/vbauerster/mpb/v5"
 
+	"github.com/kazu/vfs-index/cache"
 	"github.com/kazu/vfs-index/query"
+	query2 "github.com/kazu/vfs-index/query"
 )
 
 // IndexFileType ... type of Index File
@@ -803,7 +805,9 @@ func (f *IndexFile) commonFnByKey(key uint64) (result SearchFn) {
 	baseFn := func(skipFn SkipFn, addFn AddFn) func(skipFn SkipFn, opts ...OptResultFn) {
 		return f.recordInfoByKeyFn(key, func(arg RecordInfoArg) {
 			if !arg.isKeyRecord {
-				addFn(arg.rec.Value())
+				if addFn != nil && arg.rec != nil && arg.rec.Value() != nil {
+					addFn(arg.rec.Value())
+				}
 				return
 			}
 			if arg.kr == nil {
@@ -826,7 +830,9 @@ func (f *IndexFile) commonFnByKey(key uint64) (result SearchFn) {
 					return fmt.Sprintf("FileId=%+v Offset=%+v", r.FileId().Uint64(), r.Offset().Int64())
 				}
 				Log(LOG_DEBUG, "found add %+v\n", recDump(r))
-				addFn(r)
+				if addFn != nil && r != nil {
+					addFn(r)
+				}
 			}
 			return
 		})
@@ -862,12 +868,33 @@ func (f *IndexFile) commonFnByKey(key uint64) (result SearchFn) {
 		return
 
 	NO_IN:
+		caches := cache.Global.Cache(f.c.Name, key, nil)
+		if caches != nil {
+			go func(out chan<- *query.Record) {
+				defer recoverOnWriteClosedChan()
+				for _, rec := range caches {
+					out <- rec
+				}
+				out <- nil
+			}(out)
+			go func() {
+				baseFn(EmptySkip, func(r interface{}) {
+				})(EmptySkip)
+			}()
+
+			return
+
+		}
+
 		go func(out chan<- *query.Record) {
 			defer recoverOnWriteClosedChan()
+			recs := []*query2.Record{}
 			baseFn(EmptySkip, func(r interface{}) {
 				cRec := r.(*query.Record)
 				out <- cRec
+				recs = append(recs, cRec)
 			})(EmptySkip)
+			cache.Global.Cache(f.c.Name, key, recs)
 			out <- nil
 		}(out)
 
@@ -1165,10 +1192,15 @@ func (f *IndexFile) CountNearByKeyFn(key uint64, less bool) CountFn {
 }
 func recoverOnWriteClosedChan() {
 	if x := recover(); x != nil {
-		if e, ok := x.(error); ok && e.Error() == "send on closed channel" {
-			Log(LOG_WARN, "avoid write close channel=%v", x)
-			return
+		closeclose := "close of closed channel"
+		sendClose := "send on closed channel"
+		if e, ok := x.(error); ok {
+			if e.Error() == closeclose || e.Error() == sendClose {
+				Log(LOG_WARN, "avoid write close channel=%v", x)
+				return
+			}
 		}
+
 		panic(x)
 	}
 }

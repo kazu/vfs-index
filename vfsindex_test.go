@@ -443,3 +443,21 @@ func Test_RecordListInsertSort(t *testing.T) {
 	assert.Equal(t, vfs.RecordEQ, cmp)
 
 }
+
+// func Test_Distance(t *testing.T) {
+
+// 	src := "鬼滅の刃 週刊少年ジャンプ"
+// 	dst := "戦場である蛇甘平原で"
+
+// 	vfs.CurrentLogLoevel = vfs.LOG_WARN
+// 	idx, e := OpenIndexer()
+
+// 	sCond := idx.On("test", vfs.ReaderColumn("content"), vfs.Output(vfs.MapInfOutput))
+// 	hoge := sCond.DistanceOfString(src, dst)
+
+// 	assert.NoError(t, e)
+// 	assert.NotNil(t, hoge)
+
+// 	//assert.Truef(t, dur > dur2, "dur=%s <= dur2=%s", dur, dur2)
+
+// }

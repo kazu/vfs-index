@@ -974,6 +974,24 @@ func Test_IndexFileMerged_Merge(t *testing.T) {
 
 }
 
+func Test_Distance(t *testing.T) {
+
+	src := "鬼滅の刃"
+	dst := "炭治郎"
+
+	CurrentLogLoevel = LOG_WARN
+	idx, e := Open(DataDir, RootDir(IdxDir))
+
+	sCond := idx.On("test", ReaderColumn("content"), Output(MapInfOutput))
+	hoge := sCond.DistanceOfString(src, dst)
+
+	assert.NoError(t, e)
+	assert.NotNil(t, hoge)
+
+	//assert.Truef(t, dur > dur2, "dur=%s <= dur2=%s", dur, dur2)
+
+}
+
 // func Test_RecordByKey2(t *testing.T) {
 
 // 	setup()

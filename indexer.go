@@ -96,10 +96,18 @@ func (idx *Indexer) Regist(table, col string) error {
 func (idx *Indexer) On(table string, opts ...Option) *SearchCond {
 	flist, err := idx.openFileList(table)
 	if err != nil {
-		return &SearchCond{idx: idx, Err: err}
+		cond := NewSearchCond()
+		cond.idx = idx
+		cond.Err = err
+		return cond
 	}
 	mergeOpt(&idx.opt, opts...)
-	cond := &SearchCond{idx: idx, flist: flist, table: table, column: ""}
+	cond := NewSearchCond()
+	cond.idx = idx
+	cond.flist = flist
+	cond.table = table
+	cond.column = ""
+
 	if len(idx.opt.column) > 0 {
 		opt := &idx.opt
 		cond.startCol(opt.column)

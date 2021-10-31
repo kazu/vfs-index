@@ -20,13 +20,17 @@ const (
 
 type GetColumn func() *Column
 
+type WriterFn func(c *Column, qrecs ...*query.Record) interface{}
+
+type WriterChFn func(c *Column, qrecCh <-chan *query.Record, cntofOutput int) chan interface{}
+
 // SearchFinder ... FInder for query search
 type SearchFinder struct {
 	column    GetColumn
 	recordFns []SearchFn
 	skipdFns  []SkipFn
 	keys      []uint64
-	writer    func(c *Column, qrecs []*query.Record) interface{}
+	writer    func(c *Column, qrecs ...*query.Record) interface{}
 
 	recordFnChs  []RecordChFn
 	recordChs    []chan *query.Record
@@ -143,7 +147,7 @@ func (sf *SearchFinder) AndWithColumn(i int, key uint64, col *Column) (result Sk
 			Log(LOG_DEBUG, "eval AND(%d,%s) type=%s dur=%s\n", k, DecodeTri(key), r, time.Now().Sub(s))
 			if len(records) > k && records[k] != nil {
 				ResultOutput("")
-				data := sf.writer(sf.column(), []*query.Record{records[k]}).([]interface{})[0].(map[string]interface{})
+				data := sf.writer(sf.column(), records[k]).([]interface{})[0].(map[string]interface{})
 				Log(LOG_DEBUG, "\traw=A%s\n", data[sf.column().Name])
 			}
 		}()
@@ -239,7 +243,7 @@ func (sf *SearchFinder) All(opts ...SearchFinderOpt) interface{} {
 		return fmt.Sprintf("0x%x0x%x", recs[i].FileId().Uint64(), recs[i].Offset().Int64())
 	})
 
-	return sf.writer(sf.column(), recs)
+	return sf.writer(sf.column(), recs...)
 
 }
 
@@ -275,6 +279,12 @@ func (sf *SearchFinder) recordsCh(cntOfOutput int) (outCh chan interface{}) {
 
 }
 
+func ignorePanic(fn func()) {
+	defer recoverOnWriteClosedChan()
+	fn()
+
+}
+
 func (sf *SearchFinder) Records() (recs []*query.Record) {
 	if sf.useChan && len(sf.recordFnChs) > 0 {
 		//outs := make([]chan *query.Record, len(sf.recordFnChs))
@@ -298,7 +308,9 @@ func (sf *SearchFinder) Records() (recs []*query.Record) {
 			}
 		}
 		for i := range sf.recordChs {
-			close(sf.recordChs[i])
+			ignorePanic(func() {
+				close(sf.recordChs[i])
+			})
 		}
 		return
 	}
@@ -340,7 +352,7 @@ func (sf *SearchFinder) First(opts ...SearchFinderOpt) interface{} {
 	}
 
 	recs := sf.recordFns[0].RecFn(sf.skipdFns[0])
-	return sf.writer(sf.column(), []*query.Record{recs[0]})
+	return sf.writer(sf.column(), recs[0])
 
 }
 
@@ -355,7 +367,7 @@ func (sf *SearchFinder) Last(opts ...SearchFinderOpt) interface{} {
 	idx := len(sf.recordFns) - 1
 	recs := sf.recordFns[idx].RecFn(sf.skipdFns[idx])
 
-	return sf.writer(sf.column(), []*query.Record{recs[len(recs)-1]})
+	return sf.writer(sf.column(), recs[len(recs)-1])
 }
 
 func (sf *SearchFinder) Stats() []*SearchFinderStat {
@@ -385,11 +397,36 @@ func ResultStreamt(t bool) SearchFinderOpt {
 	}
 }
 
+// ResultFnOutput ... set output function  for SearchFinder
+func ResultFnOutput(w WriterFn, wCh WriterChFn) SearchFinderOpt {
+
+	return func(sf *SearchFinder) {
+		sf.writer = w
+		sf.writerCh = wCh
+	}
+}
+
+func (sf *SearchFinder) queryRecordsToRecords(qrecs ...*query.Record) (recs []*Record) {
+
+	recs = make([]*Record, 0, len(qrecs))
+	c := sf.column()
+	for _, qrec := range qrecs {
+		rec := &Record{
+			fileID: qrec.FileId().Uint64(),
+			offset: qrec.Offset().Int64(),
+			size:   qrec.Size().Int64(),
+		}
+		rec.caching(c)
+		recs = append(recs, rec)
+	}
+	return
+}
+
 // ResultOutput ... output option for SearchFinder
 func ResultOutput(name string) SearchFinderOpt {
 
 	return func(sf *SearchFinder) {
-		sf.writer = func(c *Column, qrecs []*query.Record) interface{} {
+		sf.writer = func(c *Column, qrecs ...*query.Record) interface{} {
 			result := make([]interface{}, len(qrecs))
 			for i, qrec := range qrecs {
 				rec := &Record{
