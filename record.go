@@ -39,6 +39,10 @@ func RecordFromFbs(r io.Reader) *Record {
 	}
 }
 
+func (r *Record) Cache() map[string]interface{} {
+	return r.cache
+}
+
 func (r *Record) IsExist(c *Column) bool {
 
 	var idxWriter IdxWriter
