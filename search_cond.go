@@ -402,26 +402,6 @@ func sortNearsResult(recs []*Record, scores []ScoreOfDistance) ([]*Record, []Sco
 
 }
 
-func (f *SearchCond) OldNears(src string, cname string) ([]*Record, []ScoreOfDistance) {
-
-	sStart := time.Now()
-	defer func() {
-		if f.enableStats {
-			f.addStat("Nears()", time.Now().Sub(sStart))
-		}
-	}()
-
-	keys := []uint64{}
-	for _, str := range strings.Split(src, " ") {
-		keys = append(keys, TriKeys(str)...)
-	}
-
-	keys = f.filterByAvg(keys, cname)
-
-	return sortNearsResult(f.nearsByKeys(cname, keys...))
-
-}
-
 type outNearsByQuery func(t NearsByQueryType, result interface{})
 
 type NearsByQueryType byte
@@ -430,117 +410,6 @@ const (
 	ScoreOnly  NearsByQueryType = 1
 	WithRecord NearsByQueryType = 2
 )
-
-func GotNearsByQuery(t NearsByQueryType, result interface{}) {
-
-}
-
-func (f *SearchCond) nearsByKeys(cname string, keys ...uint64) (recs []*Record, scores []ScoreOfDistance) {
-
-	recs = []*Record{}
-	sStart := time.Now()
-
-	for _, key := range keys {
-
-		finder := f.Select(func(cond SearchElem) bool {
-			return cond.Op(cname, "==", key)
-		})
-		irecs := finder.All(
-			OptQueryUseChan(true),
-			ResultFnOutput(func(c *Column, qrecs ...*query2.Record) interface{} {
-				return finder.queryRecordsToRecords(qrecs...)
-
-			}, func(c *Column, qrecCh <-chan *query2.Record, limit int) (out chan interface{}) {
-				out = make(chan interface{}, 10)
-				go func(c *Column, in <-chan *query2.Record) {
-					defer recoverOnWriteClosedChan()
-					cnt := -1
-					for qrec := range in {
-						cnt++
-						if qrec == nil {
-							break
-						}
-						out <- finder.queryRecordsToRecords(qrec)[0]
-						if limit > 0 && cnt >= limit {
-							break
-						}
-					}
-					out <- nil
-				}(c, qrecCh)
-				return out
-			}))
-		srecs := irecs.([]*Record)
-		recs = append(recs, srecs...)
-	}
-	if f.enableStats {
-		f.addStat("nearsByKeys() fetch records by keys", time.Now().Sub(sStart))
-	}
-
-	scores = make([]ScoreOfDistance, len(recs), len(recs))
-	cache := map[uint64]map[uint64]KeyDistance{}
-
-	optCache := OptCache(cache)
-
-	sort.Slice(recs, func(i, j int) bool {
-		if recs[i].fileID < recs[j].fileID {
-			return true
-		}
-		if recs[i].fileID > recs[j].fileID {
-			return false
-		}
-		if recs[i].offset < recs[j].offset {
-			return true
-		}
-		return false
-	})
-	loncha.Uniq2(&recs, func(i, j int) bool {
-		return recs[i].fileID == recs[j].fileID &&
-			recs[i].offset == recs[j].offset
-	})
-
-	for i, rec := range recs {
-		key2val := rec.cache
-		val := key2val[cname]
-		s, ok := val.(string)
-		_ = s
-		if !ok {
-			continue
-		}
-		scores[i] = f.DistanceOfKeys(keys, s, optCache)
-		optCache = OptCache(optCache(nil))
-	}
-	// type intScoreOfDistance struct {
-	// 	idx   int
-	// 	score ScoreOfDistance
-	// }
-	// goDistanceOfString := func(ch chan<- intScoreOfDistance, i int, src, s string) {
-	// 	result := f.DistanceOfString(src, s, optCache)
-	// 	optCache = OptCache(optCache(nil))
-	// 	ch <- intScoreOfDistance{idx: i, score: result}
-	// }
-
-	// ch := make(chan intScoreOfDistance, 10)
-	// cnt := len(recs)
-	// for i, rec := range recs {
-	// 	key2val := rec.cache
-	// 	val := key2val[cname]
-	// 	s, ok := val.(string)
-	// 	_ = s
-	// 	if !ok {
-	// 		continue
-	// 	}
-	// 	go goDistanceOfString(ch, i, src, s)
-	// }
-	// for s := range ch {
-	// 	cnt--
-	// 	if cnt <= 0 {
-	// 		break
-	// 	}
-	// 	scores[s.idx] = s.score
-	// }
-
-	return
-}
 
 type DistanceOfStringArg func(s map[uint64]map[uint64]KeyDistance) map[uint64]map[uint64]KeyDistance
 
@@ -566,13 +435,14 @@ func OptCache(cache map[uint64]map[uint64]KeyDistance) DistanceOfStringArg {
 		return result
 	}
 }
-func (f *SearchCond) DistanceOfString(src, dst string, cachFns ...DistanceOfStringArg) ScoreOfDistance {
+
+func (f *SearchCond) distanceOfString(src, dst string, cachFns ...DistanceOfStringArg) ScoreOfDistance {
 
 	skeys := str2keys(src)
-	return f.DistanceOfKeys(skeys, dst, cachFns...)
+	return f.distanceOfKeys(skeys, dst, cachFns...)
 }
 
-func (f *SearchCond) DistanceOfKeys(skeys []uint64, dst string, cachFns ...DistanceOfStringArg) ScoreOfDistance {
+func (f *SearchCond) distanceOfKeys(skeys []uint64, dst string, cachFns ...DistanceOfStringArg) ScoreOfDistance {
 
 	sStart := time.Now()
 	defer func() {
