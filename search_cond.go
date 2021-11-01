@@ -3,6 +3,7 @@ package vfsindex
 import (
 	"context"
 	"fmt"
+	"math"
 	"reflect"
 	"sort"
 	"strconv"
@@ -307,7 +308,7 @@ func (f *SearchCond) Nears(src string, cname string) ([]*Record, []ScoreOfDistan
 
 	key2recs := map[uint64][]*Record{}
 	reckey2rec := reckey2Record{}
-	_ = reckey2rec
+	sumRecs := 0
 	for _, key := range keys {
 		finder := f.Select(func(cond SearchElem) bool {
 			return cond.Op(cname, "==", key)
@@ -339,6 +340,7 @@ func (f *SearchCond) Nears(src string, cname string) ([]*Record, []ScoreOfDistan
 			}))
 		recs := irecs.([]*Record)
 		key2recs[key] = recs
+		sumRecs += len(recs)
 		for _, rec := range recs {
 			reckey2rec.Cache(rec)
 		}
@@ -359,7 +361,7 @@ func (f *SearchCond) Nears(src string, cname string) ([]*Record, []ScoreOfDistan
 			if _, ok := rec.cache["Score"].(float64); ok {
 				score = rec.cache["Score"].(float64)
 			}
-			score += 1.0 / float64(len(key2recs[key]))
+			score += float64(len(key2recs[key])) / float64(sumRecs)
 			rec.cache["Score"] = score
 		}
 	}
@@ -370,7 +372,7 @@ func (f *SearchCond) Nears(src string, cname string) ([]*Record, []ScoreOfDistan
 		dist := ScoreOfDistance{Distance: 1.0}
 		if rec.cache["Score"] != nil {
 			score := rec.cache["Score"].(float64)
-			dist.Distance = 1.0 - score
+			dist.Distance = math.Ceil((1.0-score)*100000.0) / 100000.0
 		}
 		resultScoreOfDistances = append(resultScoreOfDistances, dist)
 	}
@@ -378,26 +380,27 @@ func (f *SearchCond) Nears(src string, cname string) ([]*Record, []ScoreOfDistan
 	return sortNearsResult(resultRecs, resultScoreOfDistances)
 }
 
-func sortNearsResult(recs []*Record, scores []ScoreOfDistance) ([]*Record, []ScoreOfDistance) {
+func sortNearsResult(orecs []*Record, oscores []ScoreOfDistance) ([]*Record, []ScoreOfDistance) {
 
-	movelist := make([]int, len(recs), len(recs))
+	movelist := make([]int, len(orecs), len(orecs))
 	for i := range movelist {
 		movelist[i] = i
 	}
 	sort.Slice(movelist, func(i, j int) bool {
-		return scores[movelist[i]].Distance < scores[movelist[j]].Distance
+		return oscores[movelist[i]].Distance < oscores[movelist[j]].Distance
 	})
-	swapR := reflect.Swapper(recs)
-	swapS := reflect.Swapper(movelist)
+	recs := make([]*Record, len(orecs))
+	scores := make([]ScoreOfDistance, len(oscores))
 
-	for i, j := range movelist {
-		if i > j {
-			continue
-		}
-		swapR(i, j)
-		swapS(i, j)
+	for i := range movelist {
+		recs[i] = orecs[movelist[i]]
+		scores[i] = oscores[movelist[i]]
 	}
 
+	scoreIsSorted := sort.SliceIsSorted(scores, func(i, j int) bool {
+		return scores[i].Distance < scores[j].Distance
+	})
+	_ = scoreIsSorted
 	return recs, scores
 
 }
