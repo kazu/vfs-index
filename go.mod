@@ -36,4 +36,4 @@ require (
 	gopkg.in/yaml.v2 v2.3.0 // indirect
 )
 
-replace github.com/kazu/fbshelper => ../fbshelper/
+//replace github.com/kazu/fbshelper => ../fbshelper/
