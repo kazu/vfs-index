@@ -983,7 +983,7 @@ func Test_Distance(t *testing.T) {
 	idx, e := Open(DataDir, RootDir(IdxDir))
 
 	sCond := idx.On("test", ReaderColumn("content"), Output(MapInfOutput))
-	hoge := sCond.DistanceOfString(src, dst)
+	hoge := sCond.distanceOfString(src, dst)
 
 	assert.NoError(t, e)
 	assert.NotNil(t, hoge)

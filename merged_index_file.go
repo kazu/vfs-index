@@ -398,16 +398,23 @@ func MergeKerRecordList(oKrLists ...*query.KeyRecordList) (dst *query.KeyRecordL
 			pKrlists[1].SetAt(pKrlists[1].Count(), cKr)
 		}
 		if i == len(krLists)-1 {
+			makeArgs := []*query.KeyRecordList{pKrlists[0], pKrlists[1], cKrList[1]}
+
+			if i == 1 {
+				return MergeKerRecordList(makeArgs...)
+			}
 			return MergeKerRecordList(
 				append(krLists[0:i-1],
-					[]*query.KeyRecordList{pKrlists[0], pKrlists[1], cKrList[1]}...)...)
+					makeArgs...)...)
+		}
+		makeArgs := append([]*query.KeyRecordList{pKrlists[0], pKrlists[1], cKrList[1]}, krLists[i+1:]...)
+		if i == 1 {
+			return MergeKerRecordList(makeArgs...)
 
 		}
 
 		return MergeKerRecordList(
-			append(krLists[0:i-1],
-				append([]*query.KeyRecordList{pKrlists[0], pKrlists[1], cKrList[1]}, krLists[i+1:]...)...)...)
-
+			append(krLists[0:i-1], makeArgs...)...)
 	}
 
 	return
