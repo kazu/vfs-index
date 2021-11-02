@@ -453,8 +453,11 @@ func (f *SearchCond) distanceOfKeys(skeys []uint64, dst string, cachFns ...Dista
 			f.addStat("DistanceOfKeys()", time.Now().Sub(sStart))
 		}
 	}()
+	cacheMap := map[uint64]map[uint64]KeyDistance{}
 
-	cacheMap := cachFns[0](nil)
+	if len(cachFns) > 0 {
+		cacheMap = cachFns[0](nil)
+	}
 
 	var mu sync.Mutex
 
@@ -522,7 +525,9 @@ func (f *SearchCond) distanceOfKeys(skeys []uint64, dst string, cachFns ...Dista
 	}
 	score /= float64(len(skeys))
 
-	cachFns[0](cacheMap)
+	if len(cachFns) > 0 {
+		cachFns[0](cacheMap)
+	}
 
 	return ScoreOfDistance{
 		Distance:  score,
